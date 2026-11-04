@@ -27,3 +27,14 @@ def test_both_entry_scripts_exist_and_main_is_a_usage_stub():
 def test_manifest_version_matches_changelog():
     version = re.search(r"version\s*=\s*'([^']+)'", _config_text()).group(1)
     assert f"## v{version}" in open(os.path.join(REPO, "CHANGELOG.md")).read()
+
+
+def test_container_is_a_reference_singularity_and_docker_can_pull():
+    # Nextflow prefixes `docker://` to any name without a `scheme://`, so 'docker:<ns>/<img>:<tag>'
+    # becomes the unpullable 'docker://docker:<ns>/<img>:<tag>' and a bare '<img>:<tag>' resolves
+    # to docker.io/library/<img>. Require [docker://][registry[:port]/]<ns>/<img>:<tag>.
+    m = re.search(r"^\s*container\s*=\s*'([^']*)'", _config_text(), re.M)
+    assert m, "params.container not found in nextflow.config"
+    ref = m.group(1)
+    pattern = r"(docker://)?([a-z0-9.-]+(:[0-9]+)?/)?[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9._-]+"
+    assert re.fullmatch(pattern, ref), f"params.container {ref!r} is not a pullable image reference"

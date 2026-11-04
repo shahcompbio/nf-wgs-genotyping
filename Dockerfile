@@ -4,7 +4,7 @@
 FROM mambaorg/micromamba:1.5.10-jammy
 
 LABEL org.opencontainers.image.title="nf-wgs-genotyping" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version="1.0.1" \
       org.opencontainers.image.description="Bulk WGS SNV/SV re-genotyping (pysam, svtyper fork 27a0427)"
 
 # Nextflow runs `ps` inside the container to record task CPU/memory metrics (trace/report);

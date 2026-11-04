@@ -13,7 +13,7 @@ Both entry scripts share the input parameters; each has its own analysis paramet
 | `--reference_fasta` | none | Indexed FASTA (`.fai` next to it). SNV: REF check. SV: REF bases and svtyper `-T` (needed for clip matching). Strongly recommended. |
 | `--contigs` | `1..22,X,Y` | Calls on other contigs are dropped. Empty string = keep all. |
 | `--outdir` | `results` | Output directory. |
-| `--container` | `nf-wgs-genotyping:1.0.0` | Image for docker/singularity profiles (set to `<registry>/nf-wgs-genotyping:1.0.0`). |
+| `--container` | `mattmyers/nf-wgs-genotyping:1.0.1` | Image for docker/singularity profiles: `[registry/]<namespace>/<image>:<tag>`, no `docker:` prefix (Nextflow adds `docker://` for singularity). |
 | `--conda_env` | `environment.yml` | Prebuilt env path for `-profile conda`. |
 | `--python` | `python3` | Interpreter that runs the `bin/` scripts. Containers/`-profile conda` need no change. When running directly in an activated env (no container/conda profile), pass an absolute path (`--python $(which python)`): shell start-up files can change `PATH` inside tasks so that `python3` resolves to another interpreter (e.g. `/usr/bin/python3` without pyyaml). |
 
