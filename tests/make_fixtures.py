@@ -184,7 +184,7 @@ def _bam(outdir, seqs):
         for r in reads:
             out.write(r)
     bam = os.path.join(outdir, "target.bam")
-    pysam.sort("-o", bam, tmp)
+    pysam.sort("--no-PG", "-o", bam, tmp)
     os.remove(tmp)
     pysam.index(bam)
     return bam, ref, alt
@@ -331,7 +331,9 @@ def build_all(outdir):
         "sv_target": SV_TARGET, "seqs": seqs,
     }
     with open(os.path.join(outdir, "truth.json"), "w") as fh:
-        json.dump({k: v for k, v in truth.items() if k not in ("seqs", "snv_union", "sv_vcfs")},
+        portable = {k: (os.path.basename(v) if isinstance(v, str) and os.path.isabs(v) else v)
+                    for k, v in truth.items() if k not in ("seqs", "snv_union", "sv_vcfs", "snv_vcfs")}
+        json.dump(portable,
                   fh, indent=2, sort_keys=True, default=lambda o: sorted(o) if isinstance(o, set) else str(o))
     return truth
 

@@ -18,11 +18,6 @@
   "normal": "N1",
   "other_tumor": "T2",
   "snv_samplesheet": "tests/data/synthetic/snv_samplesheet.csv",
-  "snv_vcfs": {
-    "caveman": "tests/data/synthetic/T1_vs_N1.caveman.vcf",
-    "mutect": "tests/data/synthetic/T1_vs_N1.mutect.vcf",
-    "strelka": "tests/data/synthetic/T2_vs_N1.strelka.vcf"
-  },
   "sv_expected": {
     "filtered_germline": "82677",
     "in_target": [
