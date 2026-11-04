@@ -1,0 +1,19 @@
+##fileformat=VCFv4.2
+##contig=<ID=ctg1,length=346>
+##contig=<ID=ctg2,length=462>
+##contig=<ID=ctg3,length=289>
+##contig=<ID=ctg4,length=121>
+##contig=<ID=ctg5,length=303>
+##contig=<ID=ctg6,length=121>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=MATEID,Number=.,Type=String,Description="ID of mate breakend">
+##INFO=<ID=CIPOS,Number=2,Type=Integer,Description="Confidence interval around POS">
+##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT
+ctg1	285	sv1_A	N	N[ctg2:122[	.	PASS	SVTYPE=BND;MATEID=sv1_B;CIPOS=-50,50;IMPRECISE
+ctg2	122	sv1_B	N	]ctg1:285]N	.	PASS	SVTYPE=BND;MATEID=sv1_A;CIPOS=-50,50;IMPRECISE
+ctg3	144	sv2_A	N	[ctg4:61[N	.	PASS	SVTYPE=BND;MATEID=sv2_B;CIPOS=-50,50;IMPRECISE
+ctg4	61	sv2_B	N	[ctg3:144[N	.	PASS	SVTYPE=BND;MATEID=sv2_A;CIPOS=-50,50;IMPRECISE
+ctg5	154	sv3_A	N	[ctg6:61[N	.	PASS	SVTYPE=BND;MATEID=sv3_B;CIPOS=-50,50;IMPRECISE
+ctg6	61	sv3_B	N	[ctg5:154[N	.	PASS	SVTYPE=BND;MATEID=sv3_A;CIPOS=-50,50;IMPRECISE
