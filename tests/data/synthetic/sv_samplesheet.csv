@@ -1,0 +1,7 @@
+tumor_id,normal_id,caller,vcf
+NA12878,N1,brass,NA12878_vs_N1.brass.vcf
+NA12878,N1,gridss,NA12878_vs_N1.gridss.vcf
+NA12878,N1,svaba,NA12878_vs_N1.svaba.vcf
+T2,N1,brass,T2_vs_N1.brass.vcf
+T2,N1,gridss,T2_vs_N1.gridss.vcf
+T2,N1,svaba,T2_vs_N1.svaba.vcf

@@ -1,0 +1,3 @@
+tumor_id,normal_id,caller,vcf
+STUB,N,generic,a.vcf
+T2,N,generic,b.vcf

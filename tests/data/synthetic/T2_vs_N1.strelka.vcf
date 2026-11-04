@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##contig=<ID=1,length=3000>
+##contig=<ID=2,length=3000>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	NORMAL	TUMOR
+1	1700	.	T	A	.	.	.	GT	0/0	0/1
+2	500	.	T	A,C	.	PASS	.	GT	0/0	0/1
+MT	10	.	A	G	.	PASS	.	GT	0/0	0/1

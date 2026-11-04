@@ -1,0 +1,55 @@
+{
+  "S1": [
+    "1",
+    1000
+  ],
+  "S1_alt": "A",
+  "S1_ref": "G",
+  "S2": [
+    "1",
+    1500
+  ],
+  "S3": [
+    "2",
+    500
+  ],
+  "bam": "tests/data/synthetic/target.bam",
+  "fasta": "tests/data/synthetic/ref.fa",
+  "normal": "N1",
+  "other_tumor": "T2",
+  "snv_samplesheet": "tests/data/synthetic/snv_samplesheet.csv",
+  "snv_vcfs": {
+    "caveman": "tests/data/synthetic/T1_vs_N1.caveman.vcf",
+    "mutect": "tests/data/synthetic/T1_vs_N1.mutect.vcf",
+    "strelka": "tests/data/synthetic/T2_vs_N1.strelka.vcf"
+  },
+  "sv_expected": {
+    "filtered_germline": "82677",
+    "in_target": [
+      "72354",
+      "72623",
+      "76210",
+      "76667"
+    ],
+    "n_union": 6,
+    "not_in_target": [
+      "73459",
+      "81625"
+    ]
+  },
+  "sv_samplesheet": "tests/data/synthetic/sv_samplesheet.csv",
+  "sv_target": "NA12878",
+  "target": "T1",
+  "truth_S1": {
+    "alt_count": 9,
+    "conflict_count": 1,
+    "other_count": 1,
+    "ref_count": 10
+  },
+  "truth_S2": {
+    "alt_count": 0,
+    "conflict_count": 0,
+    "other_count": 0,
+    "ref_count": 4
+  }
+}
