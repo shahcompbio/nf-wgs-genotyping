@@ -90,3 +90,24 @@ def test_cli_writes_table_yaml_and_qc(synth, tmp_path):
     assert [c["name"] for c in meta["columns"]] == FINAL_COLUMNS
     qc = json.load(open(out / "T1_genotyping_qc.json"))
     assert qc["sample_id"] == "T1" and qc["type"] == "snv_genotyping"
+
+
+def test_empty_union_end_to_end_gives_header_only_table(synth, tmp_path):
+    vcf = tmp_path / "none.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+    tsv, st = tmp_path / "x.tsv", tmp_path / "x.json"
+    snv_extract.main(["--vcf", str(vcf), "--caller", "mutect", "--tumor-id", "T1", "--normal-id", "N1",
+                      "--out-tsv", str(tsv), "--out-stats", str(st)])
+    udir = tmp_path / "union"
+    udir.mkdir()
+    snv_union.main(["--inputs", str(tsv), "--sample-id", "T1", "--outdir", str(udir)])
+    counts = tmp_path / "counts_chunk_00000.tsv"
+    snv_count.main(["--bam", synth["bam"], "--sites", str(udir / "chunks" / "chunk_00000.tsv"), "--out", str(counts)])
+    out = tmp_path / "final"
+    out.mkdir()
+    snv_finalize.main(["--union", str(udir / "T1_union_snvs.tsv.gz"), "--counts", str(counts),
+                       "--manifest", str(udir / "chunks.manifest"), "--stats", str(st), "--sample-id", "T1",
+                       "--outdir", str(out)])
+    table = pd.read_csv(out / "T1_snv_genotyping.csv.gz")
+    assert len(table) == 0 and list(table.columns) == FINAL_COLUMNS
+    assert json.load(open(out / "T1_genotyping_qc.json"))["positive_control_fraction"] is None
