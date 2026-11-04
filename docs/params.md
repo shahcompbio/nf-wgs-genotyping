@@ -15,6 +15,7 @@ Both entry scripts share the input parameters; each has its own analysis paramet
 | `--outdir` | `results` | Output directory. |
 | `--container` | `nf-wgs-genotyping:1.0.0` | Image for docker/singularity profiles (set to `<registry>/nf-wgs-genotyping:1.0.0`). |
 | `--conda_env` | `environment.yml` | Prebuilt env path for `-profile conda`. |
+| `--python` | `python3` | Interpreter that runs the `bin/` scripts. Containers/`-profile conda` need no change. When running directly in an activated env (no container/conda profile), pass an absolute path (`--python $(which python)`): shell start-up files can change `PATH` inside tasks so that `python3` resolves to another interpreter (e.g. `/usr/bin/python3` without pyyaml). |
 
 ## SNV (`snv_genotyping.nf`)
 

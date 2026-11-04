@@ -8,7 +8,7 @@ share this repository, with distinct entry points:
 | `snv_genotyping.nf` | PASS SNVs from CaVEMan / Mutect / Strelka (or generic) VCFs of every tumor–normal pair | fragment-level pysam pileup | ref/alt/other fragment counts, VAF |
 | `sv_genotyping.nf` | PASS SVs from BRASS / GRIDSS / SvABA (or generic) VCFs of every tumor–normal pair | [svtyper fork](https://github.com/marcjwilliams1/svtyper) @ `27a0427` | svtyper fragment + read counts, genotype |
 
-Built to be launched by the isabl apps `WGS_SNV_GENOTYPING` and `WGS_SV_GENOTYPING`
+Built to be launched by the isabl apps `SNV_GENOTYPING` and `SV_GENOTYPING`
 (papaemmelab `isabl_apps`), but runs standalone. The design follows the Shah-lab Mondrian
 SNV-genotyping workflow (union of patient calls → scatter → gather) for bulk WGS, with explicit
 read filters and an explicit, manifest-checked gather.
@@ -17,7 +17,7 @@ read filters and an explicit, manifest-checked gather.
 
 ```bash
 # from GitHub (pinned release); -main-script selects the pipeline
-nextflow run <org>/nf-wgs-genotyping -revision v1.0.0 -main-script snv_genotyping.nf -profile iris \
+nextflow run shahcompbio/nf-wgs-genotyping -revision v1.0.0 -main-script snv_genotyping.nf -profile iris \
     --samplesheet samplesheet.csv --target_bam T1.bam --sample_id T1 \
     --reference_fasta /path/GRCh37.fasta --outdir results
 
@@ -95,10 +95,38 @@ See [docs/params.md](docs/params.md) and [docs/outputs.md](docs/outputs.md).
 
 ## isabl integration
 
-The isabl apps write `samplesheet.csv` from the individual's SUCCEEDED caller analyses and call
-`isabl_apps.nextflow.utils.create_nextflow_script` with `nf_tool="<org>/nf-wgs-genotyping
+The isabl apps `SNV_GENOTYPING` / `SV_GENOTYPING` (papaemmelab `isabl_apps`, GRCh37) write
+`samplesheet.csv` from the individual's SUCCEEDED caller analyses and call
+`isabl_apps.nextflow.utils.create_nextflow_script` with `nf_tool="shahcompbio/nf-wgs-genotyping
 -main-script <entry>.nf"`, `-revision v1.0.0`, `-profile iris` and a per-analysis work dir.
 Result patterns match the file names in [docs/outputs.md](docs/outputs.md).
+
+```bash
+# in the environment that runs `isabl` (with isabl_cli): install the branch with the apps
+pip install -e /data1/shahs3/users/myersm2/repos/genotyping-dev/isabl_apps   # feature/wgs-genotyping
+# admin, once: register SNVGenotypingGRCh37 / SVGenotypingGRCh37 in the client's
+# INSTALLED_APPLICATIONS. No settings patch is needed: nf_tool, nf_version and the GRCh37
+# reference have defaults. Do not run `isabl-apps patch-settings` from this branch -- it
+# re-patches every app with this branch's settings.
+
+# one target (tumor or normal WGS experiment); without --commit isabl only stages the analysis
+# (creates the record, writes .script.sh and samplesheet.csv) -- inspect them, then submit
+isabl apps-grch37 snv-genotyping-1.0.0 -fi system_id <TARGET_SYSTEM_ID>
+isabl apps-grch37 snv-genotyping-1.0.0 -fi system_id <TARGET_SYSTEM_ID> --commit
+isabl apps-grch37 sv-genotyping-1.0.0  -fi system_id <TARGET_SYSTEM_ID> --commit
+
+# every WGS experiment of a patient as targets
+isabl apps-grch37 snv-genotyping-1.0.0 -fi sample__individual__system_id <INDIVIDUAL_SYSTEM_ID> \
+    -fi technique__method WG --commit
+
+# genotype even if some of the patient's tumors have no caller analyses
+isabl apps-grch37 sv-genotyping-1.0.0 -fi system_id <TARGET_SYSTEM_ID> --allow-unpaired-tumors --commit
+```
+
+Requires the `v1.0.0` tag of `shahcompbio/nf-wgs-genotyping` on GitHub and a pulled image: until
+`params.container` in the tagged `nextflow.config` names the pushed image, add
+`"pipeline_params": {"container": "<registry>/nf-wgs-genotyping:1.0.0"}` to both apps' settings
+patches in `isabl_apps/settings.py`.
 
 ## Software
 
@@ -113,8 +141,9 @@ Result patterns match the file names in [docs/outputs.md](docs/outputs.md).
 conda activate nf-wgs-genotyping                      # or any env with pysam/pandas/pyyaml/pytest
 pytest -q tests                                       # unit + svtyper integration + nextflow runs
 SVTYPER_SRC=/path/to/svtyper pytest -q tests          # if svtyper is not installed in the env
-nextflow run snv_genotyping.nf -profile test_snv      # synthetic SNV truth (tests/data/synthetic)
-nextflow run sv_genotyping.nf  -profile test_sv       # NA12878 deletions (svtyper MIT fixture)
+# in an activated env without containers, pin the interpreter used inside tasks:
+nextflow run snv_genotyping.nf -profile test_snv --python $(which python)   # synthetic SNV truth
+nextflow run sv_genotyping.nf  -profile test_sv  --python $(which python)   # NA12878 deletions
 nextflow run snv_genotyping.nf -profile stub -stub-run
 ```
 

@@ -12,12 +12,12 @@ process SVTYPER_LIBINFO {
 
     script:
     """
-    svtyper_run.py --svtyper-cmd '${params.svtyper_cmd}' --bam ${bam} \\
+    ${params.python} \$(command -v svtyper_run.py) --svtyper-cmd '${params.svtyper_cmd}' --bam ${bam} \\
         --lib-info ${sample_id}.lib_info.json --lib-only
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        svtyper: \$(python3 -c 'import svtyper.version as v; print(v.__version__)' 2>/dev/null || echo unknown)
+        svtyper: \$(${params.python} -c 'import svtyper.version as v; print(v.__version__)' 2>/dev/null || echo unknown)
     END_VERSIONS
     """
 

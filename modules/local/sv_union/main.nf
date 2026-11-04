@@ -19,14 +19,14 @@ process SV_UNION {
     def ref     = fasta.name.startsWith('NO_FASTA') ? '' : "--reference ${fasta}"
     def contigs = params.contigs ? "--contigs '${params.contigs}'" : ''
     """
-    sv_union.py --inputs ${tsvs} --sample-id '${sample_id}' ${ref} ${contigs} \\
+    ${params.python} \$(command -v sv_union.py) --inputs ${tsvs} --sample-id '${sample_id}' ${ref} ${contigs} \\
         --slop ${params.sv_slop} --rep-priority '${params.sv_rep_priority}' \\
         --chunk-size ${params.sv_chunk_size} --outdir .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 -c 'import platform; print(platform.python_version())')
-        pandas: \$(python3 -c 'import pandas; print(pandas.__version__)')
+        python: \$(${params.python} -c 'import platform; print(platform.python_version())')
+        pandas: \$(${params.python} -c 'import pandas; print(pandas.__version__)')
     END_VERSIONS
     """
 

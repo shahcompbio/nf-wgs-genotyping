@@ -21,13 +21,13 @@ process SV_FINALIZE {
     def ref     = fasta.name.startsWith('NO_FASTA') ? '' : "--reference ${fasta}"
     def contigs = params.contigs ? "--contigs '${params.contigs}'" : ''
     """
-    sv_finalize.py --union ${union} --genotyped ${genotyped} --manifest ${manifest} \\
+    ${params.python} \$(command -v sv_finalize.py) --union ${union} --genotyped ${genotyped} --manifest ${manifest} \\
         --stats ${stats} --sample-id '${sample_id}' ${ref} ${contigs} --outdir .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         nf-wgs-genotyping: ${workflow.manifest.version}
-        pandas: \$(python3 -c 'import pandas; print(pandas.__version__)')
+        pandas: \$(${params.python} -c 'import pandas; print(pandas.__version__)')
     END_VERSIONS
     """
 

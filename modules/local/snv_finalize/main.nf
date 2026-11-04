@@ -17,13 +17,13 @@ process SNV_FINALIZE {
 
     script:
     """
-    snv_finalize.py --union ${union} --counts ${counts} --manifest ${manifest} \\
+    ${params.python} \$(command -v snv_finalize.py) --union ${union} --counts ${counts} --manifest ${manifest} \\
         --stats ${stats} --sample-id '${sample_id}' --outdir .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         nf-wgs-genotyping: ${workflow.manifest.version}
-        pandas: \$(python3 -c 'import pandas; print(pandas.__version__)')
+        pandas: \$(${params.python} -c 'import pandas; print(pandas.__version__)')
     END_VERSIONS
     """
 

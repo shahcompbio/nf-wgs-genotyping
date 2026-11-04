@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
 import pandas as pd
 import pytest
@@ -23,9 +24,17 @@ def _run(entry, profile, tmp_path, *extra):
     env.setdefault("NXF_HOME", str(tmp_path / "nxf_home"))
     env["NXF_OFFLINE"] = "true"
     env["NXF_ANSI_LOG"] = "false"
+    # Shell start-up files can change PATH inside Nextflow tasks so that `python3` is another
+    # interpreter (seen on iris: /usr/bin/python3 without pyyaml). Reproduce that with a broken
+    # python3 first on PATH; the pipeline must use --python, never whatever python3 PATH finds.
+    decoy = tmp_path / "decoy_bin"
+    decoy.mkdir()
+    (decoy / "python3").write_text("#!/bin/sh\necho 'decoy python3 on PATH was used' >&2\nexit 97\n")
+    (decoy / "python3").chmod(0o755)
+    env["PATH"] = f"{decoy}{os.pathsep}{env['PATH']}"
     out = tmp_path / "out"
     cmd = ["nextflow", "run", os.path.join(REPO, entry), "-profile", profile, "-work-dir", str(tmp_path / "work"),
-           "--outdir", str(out), *extra]
+           "--outdir", str(out), "--python", sys.executable, *extra]
     res = subprocess.run(cmd, cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=900)
     assert res.returncode == 0, res.stdout[-4000:] + res.stderr[-4000:]
     return out

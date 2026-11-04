@@ -16,7 +16,7 @@ process SV_NORMALIZE {
     def contigs = params.contigs ? "--contigs '${params.contigs}'" : ''
     def brass   = params.brass_missing_filter_is_pass ? '' : '--no-brass-missing-filter-is-pass'
     """
-    sv_normalize.py \\
+    ${params.python} \$(command -v sv_normalize.py) \\
         --vcf ${vcf} --caller ${meta.caller} \\
         --tumor-id '${meta.tumor_id}' --normal-id '${meta.normal_id}' \\
         ${contigs} ${ref} ${brass} \\
@@ -26,7 +26,7 @@ process SV_NORMALIZE {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 -c 'import platform; print(platform.python_version())')
+        python: \$(${params.python} -c 'import platform; print(platform.python_version())')
     END_VERSIONS
     """
 

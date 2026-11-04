@@ -16,7 +16,7 @@ process SNV_EXTRACT {
     def contigs = params.contigs ? "--contigs '${params.contigs}'" : ''
     def missing = meta.caller == 'generic' ? '--missing-filter-is-pass' : ''
     """
-    snv_extract.py \\
+    ${params.python} \$(command -v snv_extract.py) \\
         --vcf ${vcf} --caller ${meta.caller} \\
         --tumor-id '${meta.tumor_id}' --normal-id '${meta.normal_id}' \\
         ${contigs} ${ref} ${missing} \\
@@ -25,8 +25,8 @@ process SNV_EXTRACT {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        python: \$(python3 -c 'import platform; print(platform.python_version())')
-        pysam: \$(python3 -c 'import pysam; print(pysam.__version__)')
+        python: \$(${params.python} -c 'import platform; print(platform.python_version())')
+        pysam: \$(${params.python} -c 'import pysam; print(pysam.__version__)')
     END_VERSIONS
     """
 
