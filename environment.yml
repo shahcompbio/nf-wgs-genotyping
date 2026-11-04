@@ -16,7 +16,6 @@ dependencies:
   - htslib=1.20
   - samtools=1.20
   - bcftools=1.20
-  - procps-ng
   - pytest
   - pytest-runner        # svtyper setup_requires
   - git
