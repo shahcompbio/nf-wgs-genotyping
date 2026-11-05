@@ -7,6 +7,8 @@ SNV fixtures are fully synthetic (seeded random reference, hand-built reads with
 composition). SV fixtures are caller-style VCFs (BRASS/GRIDSS/SvABA conventions, VCF-spec BND
 positions) describing deletions from svtyper's MIT-licensed NA12878 fixture
 (tests/data/svtyper), so they can be genotyped against NA12878.target_loci.sorted.bam.
+SV insertion fixtures are synthetic: designed insertions on contig 4 of the synthetic reference,
+with reads in target.bam and GRIDSS/generic-style VCFs (sv_ins_samplesheet.csv).
 Nothing here is derived from patient data.
 """
 import argparse
@@ -20,8 +22,9 @@ import pysam
 
 SEED = 20261104
 # contig 3 is generated after 1 and 2 by the same RNG (so 1 and 2 are unchanged), then the indel
-# motifs below are written into it (see _design_indel_contig)
-CONTIGS = [("1", 3000), ("2", 3000), ("3", 3000)]
+# motifs below are written into it (see _design_indel_contig); contig 4 likewise after 3, for the
+# SV insertions (see _design_ins_contig)
+CONTIGS = [("1", 3000), ("2", 3000), ("3", 3000), ("4", 4000)]
 READ_LEN = 50
 TARGET = "T1"          # target sample id == BAM @RG SM
 NORMAL = "N1"
@@ -58,6 +61,29 @@ TRUTH_INDELS = {
     "C4": {"ref_count": 3, "alt_count": 3, "other_count": 0, "uninformative_count": 0, "conflict_count": 0},
 }
 
+# SV insertions on contig 4 (anchor = reference base left of the insertion, 1-based):
+#   INS1  unique 60-bp insertion after 1000; GRIDSS-style BND pair with the sequence (T1) and a
+#         length-only generic <INS> SVLEN=60 (T2): two adjacencies of one cluster, same truth
+#   INS2  +(CA)x25 (50 bp: the SV size boundary) in (CA)x10 at 2001-2020 (pad T 2000, G 2021);
+#         REF/ALT at the repeat start (T1) and a BND at its end (T2): left-aligned to one adjacency
+#   SMALL 49-bp insertion after 2500 (dropped: indel workflow), IMPRECISE <INS> SVLEN=300 at 3000
+#         (not genotyped), <INS> without length at 3200 (dropped), <INS> SVLEN=100 at 3500 without
+#         reads (no evidence)
+INS1_SEQ = "".join(random.Random(SEED + 4).choice("ACGT") for _ in range(60))
+INS_SITES = {
+    "INS1": ("4", 1000, 0, INS1_SEQ),
+    "INS2": ("4", 2000, 0, "CA" * 25),
+    "IMPRECISE": ("4", 3000, 0, None),
+    "NO_EVIDENCE": ("4", 3500, 0, None),
+}
+# Expected fragment counts (see _ins_reads); identical for the sequence and the length-only (N)
+# haplotype of INS1.
+TRUTH_INS = {
+    "INS1": {"ref_fragments": 6, "alt_fragments": 7, "uninformative_fragments": 1, "conflict_fragments": 0},
+    "INS2": {"ref_fragments": 3, "alt_fragments": 4, "uninformative_fragments": 1, "conflict_fragments": 0},
+    "NO_EVIDENCE": {"ref_fragments": 0, "alt_fragments": 0, "uninformative_fragments": 0, "conflict_fragments": 0},
+}
+
 P, PROPER, UNMAP, MUNMAP, REV, MREV, R1, R2 = 0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80
 SECONDARY, QCFAIL, DUP, SUPP = 0x100, 0x200, 0x400, 0x800
 
@@ -79,6 +105,7 @@ def _reference(outdir):
     rng = random.Random(SEED)
     seqs = {c: "".join(rng.choice("ACGT") for _ in range(n)) for c, n in CONTIGS}
     _design_indel_contig(seqs)
+    _design_ins_contig(seqs)
     path = os.path.join(outdir, "ref.fa")
     with open(path, "w") as fh:
         for c, s in seqs.items():
@@ -107,6 +134,11 @@ def _design_indel_contig(seqs):
     s = _put(s, 1500, "T" + "CA" * 6 + "G")      # I3: pad T, (CA) x6, G
     s = _put(s, 2000, "GTACGT")                  # C4: GTACG -> GC, then T
     seqs["3"] = s
+
+
+def _design_ins_contig(seqs):
+    """Write the INS2 repeat into contig 4 (see INS_SITES)."""
+    seqs["4"] = _put(seqs["4"], 2000, "T" + "CA" * 10 + "G")
 
 
 def _hap_read(seq, start0, var=None, n=READ_LEN, aligned=None):
@@ -204,6 +236,72 @@ def _indel_reads(header, seqs):
         frag(st)                                       # C4 ref: 3
     for st in (1966, 1969, 1972):
         frag(st, c4)                                   # C4 alt: 3
+    return reads
+
+
+def _ins_reads(header, seqs):
+    """Reads at the contig-4 insertions; comments give each fragment's expected class. Reads from
+    the insertion haplotype are written as an aligner would: matched up to the insertion, then
+    soft-clipped (or clipped first, then matched)."""
+    chrom, s = "4", seqs["4"]
+    reads, n = [], [0]
+
+    def ins_read(anchor, ins, hap_start0):
+        """(ref_start0, query, cigar) of a read starting at hap_start0 on the haplotype with `ins`
+        after reference base `anchor` (1-based)."""
+        hap = s[:anchor] + ins + s[anchor:]
+        q = hap[hap_start0:hap_start0 + READ_LEN]
+        if hap_start0 + READ_LEN <= anchor:
+            return hap_start0, q, [(0, READ_LEN)]
+        if hap_start0 < anchor:
+            # matched through the anchor; the reference repeat a read can still match stays aligned
+            k = anchor - hap_start0
+            while k < READ_LEN and q[k] == s[hap_start0 + k]:
+                k += 1
+            return hap_start0, q, [(0, k), (4, READ_LEN - k)]
+        tail = hap_start0 + READ_LEN - (anchor + len(ins))       # right-flank bases in the read
+        assert tail > 0, (anchor, hap_start0)
+        k = tail
+        while k < READ_LEN and q[READ_LEN - 1 - k] == s[anchor - 1 - (k - tail)]:
+            k += 1
+        return anchor + tail - k, q, [(4, READ_LEN - k), (0, k)]
+
+    def frag(read1, *, read2=None, flag_extra=0, mapq=60):
+        """read1 = (ref_start0, query, cigar) forward; read2 reverse from the reference 230-270 bp
+        right (varied, so svtyper can estimate the insert-size spread of the BAM; always outside
+        the insertion footprints)."""
+        n[0] += 1
+        name = f"ins{n[0]:03d}"
+        r0, q1, c1 = read1
+        if read2 is None:
+            m0 = r0 + 250 + 5 * (n[0] % 9 - 4)
+            read2 = (m0, s[m0:m0 + READ_LEN], [(0, READ_LEN)])
+        m0, q2, c2 = read2
+        reads.append(_seg(header, name, chrom, r0, q1, P | R1 | MREV | PROPER | flag_extra, mapq,
+                          mate=(chrom, m0), cigar=c1))
+        reads.append(_seg(header, name, chrom, m0, q2, P | R2 | REV | PROPER | flag_extra, mapq,
+                          mate=(chrom, r0), cigar=c2))
+
+    ref = lambda st: (st, s[st:st + READ_LEN], [(0, READ_LEN)])     # noqa: E731
+    _, a1, _, seq1 = INS_SITES["INS1"]
+    for st in (962, 966, 970, 974, 978, 982):
+        frag(ref(st))                                      # INS1 ref (>= 18 bases each side): 6
+    for hs in (965, 972, 980, 988):
+        frag(ins_read(a1, seq1, hs))                       # INS1 alt, matched then clipped: 4
+    for hs in (1020, 1030):
+        frag(ins_read(a1, seq1, hs))                       # INS1 alt, clipped then matched: 2
+    frag(ins_read(a1, seq1, 975), read2=ins_read(a1, seq1, 1025))   # overlapping alt mates: +1 (once)
+    frag(ref(950))                                         # ends at the anchor: uninformative
+    frag(ins_read(a1, seq1, 968), flag_extra=DUP)          # duplicate: excluded
+    frag(ins_read(a1, seq1, 984), mapq=10)                 # MAPQ 10: excluded
+
+    _, a2, _, seq2 = INS_SITES["INS2"]
+    for st in (1978, 1984, 1990):
+        frag(ref(st))                                      # INS2 ref (spans the whole repeat): 3
+    for hs in (1985, 1988, 1992):
+        frag(ins_read(a2, seq2, hs))                       # INS2 alt, from the left flank: 3
+    frag(ins_read(a2, seq2, 2030))                         # INS2 alt, into the right flank: +1
+    frag(ref(1965))                                        # ends inside the repeat: uninformative
     return reads
 
 
@@ -319,6 +417,7 @@ def _bam(outdir, seqs):
     })
     reads, ref, alt = _snv_reads(header, seqs)
     reads += _indel_reads(header, seqs)
+    reads += _ins_reads(header, seqs)
     tmp = os.path.join(outdir, "target.unsorted.bam")
     with pysam.AlignmentFile(tmp, "wb", header=header) as out:
         for r in reads:
@@ -499,8 +598,54 @@ def _sv_vcfs(outdir):
         "in_target": {"72354", "72623", "76210", "76667"},
         "not_in_target": {"73459", "81625"},
         "filtered_germline": "82677",
+        "shifted_del": list(d["72354"][1:3]),      # BRASS exact + SvABA shifted 15 bp: 2 adjacencies
     }
     return ss, files, expected
+
+
+def _sv_ins_vcfs(outdir, seqs):
+    """GRIDSS / generic-style SV VCFs with the contig-4 insertions (see INS_SITES) and their
+    samplesheet. Normalized with the FASTA: 5 adjacencies in 4 clusters."""
+    s = seqs["4"]
+    b = lambda p: s[p - 1]                                  # noqa: E731
+    head = ("##fileformat=VCFv4.2\n" + "".join(f"##contig=<ID={c},length={n}>\n" for c, n in CONTIGS))
+
+    def write(path, samples, recs):
+        with open(path, "w") as fh:
+            fh.write(head + "\t".join(["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT",
+                                       *samples]) + "\n")
+            for r in recs:
+                fh.write("\t".join(str(x) for x in r) + "\n")
+        return path
+
+    _, a1, _, seq1 = INS_SITES["INS1"]
+    small = "".join(random.Random(SEED + 49).choice("ACGT") for _ in range(49))
+    gt = ("GT", "0/0", "0/1")
+    gridss = write(os.path.join(outdir, "T1_vs_N1.gridss.ins.vcf"), [NORMAL, TARGET], [
+        ("4", a1, "gi1o", b(a1), f"{b(a1)}{seq1}[4:{a1 + 1}[", 500, "PASS", "SVTYPE=BND;PARID=gi1h", "GT:VF", ".:0", ".:9"),
+        ("4", a1 + 1, "gi1h", b(a1 + 1), f"]4:{a1}]{seq1}{b(a1 + 1)}", 500, "PASS", "SVTYPE=BND;PARID=gi1o",
+         "GT:VF", ".:0", ".:9"),
+        ("4", 2500, "gi2o", b(2500), f"{b(2500)}{small}[4:2501[", 300, "PASS", "SVTYPE=BND", "GT:VF", ".:0", ".:5"),
+    ])
+    t1 = write(os.path.join(outdir, "T1_vs_N1.generic.ins.vcf"), ["NORMAL", "TUMOR"], [
+        ("4", 2000, "i2a", "T", "T" + "CA" * 25, ".", "PASS", "SVTYPE=INS", *gt),
+        ("4", 3000, "i3", "N", "<INS>", ".", "PASS", "SVTYPE=INS;SVLEN=300;IMPRECISE;CIPOS=-40,40", *gt),
+        ("4", 3200, "i4", "N", "<INS>", ".", "PASS", "SVTYPE=INS", *gt),
+        ("4", 3500, "i5", "N", "<INS>", ".", "PASS", "SVTYPE=INS;SVLEN=100", *gt),
+    ])
+    t2 = write(os.path.join(outdir, "T2_vs_N1.generic.ins.vcf"), ["NORMAL", "TUMOR"], [
+        ("4", a1, "j1", "N", "<INS>", ".", "PASS", "SVTYPE=INS;SVLEN=60", *gt),
+        ("4", 2020, "j2", b(2020), f"{b(2020)}{'CA' * 25}[4:2021[", ".", "PASS", "SVTYPE=BND", *gt),
+    ])
+    ss = os.path.join(outdir, "sv_ins_samplesheet.csv")
+    with open(ss, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["tumor_id", "normal_id", "caller", "vcf"])
+        w.writerow([TARGET, NORMAL, "gridss", os.path.basename(gridss)])
+        w.writerow([TARGET, NORMAL, "generic", os.path.basename(t1)])
+        w.writerow([OTHER_TUMOR, NORMAL, "generic", os.path.basename(t2)])
+    expected = {"n_clusters": 4, "n_adjacencies": 5}
+    return ss, {"gridss": gridss, "T1_generic": t1, "T2_generic": t2}, expected
 
 
 def build_all(outdir):
@@ -510,6 +655,7 @@ def build_all(outdir):
     snv_ss, snv_vcfs, snv_union = _snv_vcfs(outdir, seqs, alt1)
     ss, indel_vcfs, indel_union = _indel_vcfs(outdir, seqs, snv_ss)
     sv_ss, sv_vcfs, sv_expected = _sv_vcfs(outdir)
+    ins_ss, ins_vcfs, ins_expected = _sv_ins_vcfs(outdir, seqs)
     truth = {
         "fasta": fasta, "bam": bam, "target": TARGET, "normal": NORMAL, "other_tumor": OTHER_TUMOR,
         "S1": S1, "S2": S2, "S3": S3, "S1_ref": ref1, "S1_alt": alt1,
@@ -519,11 +665,13 @@ def build_all(outdir):
         "truth_indels": TRUTH_INDELS, "indel_union": indel_union,
         "sv_samplesheet": sv_ss, "sv_vcfs": sv_vcfs, "sv_expected": sv_expected,
         "sv_target": SV_TARGET, "seqs": seqs,
+        "sv_ins_samplesheet": ins_ss, "sv_ins_vcfs": ins_vcfs, "sv_ins_expected": ins_expected,
+        "ins_sites": INS_SITES, "truth_ins": TRUTH_INS,
     }
     with open(os.path.join(outdir, "truth.json"), "w") as fh:
         portable = {k: (os.path.basename(v) if isinstance(v, str) and os.path.isabs(v) else v)
                     for k, v in truth.items()
-                    if k not in ("seqs", "snv_union", "sv_vcfs", "snv_vcfs", "indel_vcfs")}
+                    if k not in ("seqs", "snv_union", "sv_vcfs", "snv_vcfs", "indel_vcfs", "sv_ins_vcfs")}
         json.dump(portable,
                   fh, indent=2, sort_keys=True, default=lambda o: sorted(o) if isinstance(o, set) else str(o))
     return truth

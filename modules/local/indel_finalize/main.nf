@@ -22,13 +22,16 @@ process INDEL_FINALIZE {
     def vcf = [union_vcf].flatten().find { it.name.endsWith('.vcf.gz') }
     """
     ${params.python} \$(command -v indel_finalize.py) --union ${union} --union-vcf ${vcf} --counts ${counts} \\
-        --manifest ${manifest} --stats ${stats} --sample-id '${sample_id}' --outdir .
+        --manifest ${manifest} --stats ${stats} --sample-id '${sample_id}' --outdir . \\
+        --gt-error-rate ${params.indel_gt_error_rate} --gt-overdispersion ${params.gt_overdispersion} \\
+        --gt-min-vaf ${params.gt_min_vaf} --gt-min-gq ${params.gt_min_gq}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         nf-wgs-genotyping: ${workflow.manifest.version}
         pandas: \$(${params.python} -c 'import pandas; print(pandas.__version__)')
         pysam: \$(${params.python} -c 'import pysam; print(pysam.__version__)')
+        scipy: \$(${params.python} -c 'import scipy; print(scipy.__version__)')
     END_VERSIONS
     """
 

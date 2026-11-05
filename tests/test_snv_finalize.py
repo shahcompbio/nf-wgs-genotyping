@@ -10,6 +10,7 @@ import pysam
 import pytest
 import yaml
 
+import presence_gt
 import snv_count
 import snv_extract
 import snv_finalize
@@ -17,7 +18,7 @@ import snv_union
 
 FINAL_COLUMNS = ["sample_id", "chromosome", "position", "ref", "alt", "ref_count", "alt_count",
                  "other_count", "depth", "vaf", "n_callers", "callers", "n_source_samples",
-                 "source_samples", "sources", "called_in_target"]
+                 "source_samples", "sources", "called_in_target", "gt", "gq", "pl"]
 
 
 def _run_upstream(synth, tmp_path, chunk_size=3):
@@ -62,6 +63,21 @@ def test_finalize_joins_counts_onto_union(synth, tmp_path):
     assert qc["positive_control_fraction"] == pytest.approx(0.5)
     assert qc["conflict_fragments"] == t["conflict_count"]
     assert qc["inputs"][0]["kept"] >= 1
+    # allele-presence genotypes: S1 (10 ref / 9 alt) both alleles; S2 (4 ref) too shallow for a
+    # call; the site with no fragments is a no-call with flat likelihoods
+    assert s1["gt"] == "0/1" and s1["gq"] >= 20
+    s2 = df[(df["position"] == synth["S2"][1]) & (df["chromosome"] == str(synth["S2"][0]))].iloc[0]
+    assert s2["gt"] == "./."
+    assert (df.iloc[3]["gt"], df.iloc[3]["pl"]) == ("./.", "0,0,0")
+    gts, gqs, pls = presence_gt.call(df["ref_count"], df["alt_count"], presence_gt.default_error_rate(20))
+    assert df["gt"].tolist() == gts and df["gq"].tolist() == gqs.tolist()
+    assert df["pl"].tolist() == [presence_gt.format_pl(p) for p in pls]
+    assert sum(qc["gt_counts"].values()) == 4 and qc["gt_counts"]["0/1"] >= 1
+    assert sum(qc["called_in_target_gt_counts"].values()) == 2
+    assert qc["gt_model"] == {"model": "allele_presence", "error_rate": pytest.approx(0.01 / 3),
+                              "overdispersion": 0.01, "min_vaf": 0.05, "min_gq": 20}
+    other, depth = int(df["other_count"].sum()), int(df["depth"].sum())
+    assert qc["empirical_error_rate"] == pytest.approx(other / (2 * depth))
 
 
 def test_finalize_fails_on_missing_chunk(synth, tmp_path):
@@ -93,11 +109,11 @@ def test_cli_writes_table_yaml_and_qc(synth, tmp_path):
     assert qc["sample_id"] == "T1" and qc["type"] == "snv_genotyping"
 
 
-def _finalize_cli(udir, counts, stats, out, sample="T1"):
+def _finalize_cli(udir, counts, stats, out, sample="T1", extra=()):
     snv_finalize.main(["--union", str(udir / f"{sample}_union_snvs.tsv.gz"),
                        "--union-vcf", str(udir / f"{sample}_union_snvs.vcf.gz"), "--counts", *counts,
                        "--manifest", str(udir / "chunks.manifest"), "--stats", *stats,
-                       "--sample-id", sample, "--outdir", str(out)])
+                       "--sample-id", sample, "--outdir", str(out), *extra])
 
 
 def test_cli_writes_vcf_matching_table(synth, tmp_path):
@@ -116,9 +132,16 @@ def test_cli_writes_vcf_matching_table(synth, tmp_path):
     keys = [(r.chrom, r.pos, r.ref, r.alts[0]) for r in records]
     assert keys == list(table[["chromosome", "position", "ref", "alt"]].itertuples(index=False, name=None))
     assert any(math.isnan(v) for v in table["vaf"])   # the missing-AF branch is exercised
+    with pysam.VariantFile(str(path)) as vf:
+        hdr = str(vf.header)
+    assert "##nf-wgs-genotyping_gt_model=<model=allele_presence,error_rate=0.00333333," in hdr
+    assert '##FORMAT=<ID=PL,Number=G,Type=Integer' in hdr and "Allele presence, not dosage" in hdr
+    assert set(table["gt"]) >= {"0/1", "./."}
     for rec, row in zip(records, table.itertuples(index=False)):
         s = rec.samples["T1"]
-        assert "GT" not in rec.format                  # counts only: the pipeline calls no genotype
+        assert list(rec.format)[0] == "GT"             # VCF spec: GT first
+        assert s["GT"] == presence_gt.gt_tuple(row.gt)
+        assert s["GQ"] == row.gq and s["PL"] == tuple(int(x) for x in row.pl.split(","))
         assert s["AD"] == (row.ref_count, row.alt_count)
         assert (s["DP"], s["OC"]) == (row.depth, row.other_count)
         if math.isnan(row.vaf):
@@ -136,6 +159,27 @@ def test_cli_writes_vcf_matching_table(synth, tmp_path):
         res = subprocess.run(["bcftools", "view", "-H", str(path)], capture_output=True, text=True)
         assert res.returncode == 0, res.stderr
         assert len(res.stdout.splitlines()) == len(table)
+
+
+def test_cli_gt_parameters_are_used(synth, tmp_path):
+    udir, counts, stats = _run_upstream(synth, tmp_path)
+    out = tmp_path / "final"
+    out.mkdir()
+    # error rate derived from --min-baseq when not given; --gt-min-gq 0 turns no-calls into calls
+    _finalize_cli(udir, counts, stats, out, extra=["--min-baseq", "30", "--gt-min-gq", "0",
+                                                   "--gt-overdispersion", "0", "--gt-min-vaf", "0.1"])
+    qc = json.load(open(out / "T1_genotyping_qc.json"))
+    assert qc["gt_model"]["error_rate"] == pytest.approx(0.001 / 3)
+    assert (qc["gt_model"]["overdispersion"], qc["gt_model"]["min_vaf"], qc["gt_model"]["min_gq"]) == (0, 0.1, 0)
+    table = pd.read_csv(out / "T1_snv_genotyping.csv.gz", dtype={"chromosome": str})
+    nonzero = table[table["ref_count"] + table["alt_count"] > 0]
+    assert "./." not in set(nonzero["gt"])
+    out2 = tmp_path / "final2"
+    out2.mkdir()
+    _finalize_cli(udir, counts, stats, out2, extra=["--gt-error-rate", "0.02"])
+    assert json.load(open(out2 / "T1_genotyping_qc.json"))["gt_model"]["error_rate"] == 0.02
+    with pytest.raises(SystemExit):
+        _finalize_cli(udir, counts, stats, out2, extra=["--gt-error-rate", "0.2"])   # >= min_vaf
 
 
 def test_empty_union_end_to_end_gives_header_only_table(synth, tmp_path):

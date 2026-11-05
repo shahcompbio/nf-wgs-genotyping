@@ -60,3 +60,17 @@ def test_container_tag_matches_pipeline_version_and_image_has_biopython():
     assert re.search(r"^\s*-\s*biopython", open(os.path.join(REPO, "environment.yml")).read(), re.M)
     docker = open(os.path.join(REPO, "Dockerfile")).read()
     assert f'image.version="{version}"' in docker and "import pysam, pandas, yaml, svtyper.classic, Bio" in docker
+
+
+def test_genotype_and_insertion_parameters_have_documented_defaults():
+    names = ("gt_error_rate", "indel_gt_error_rate", "gt_overdispersion", "gt_min_vaf", "gt_min_gq",
+             "sv_ins_chunk_size")
+    assert tuple(_param(n) for n in names) == ("null", "0.01", "0.01", "0.05", "20", "200")
+    doc = open(os.path.join(REPO, "docs", "params.md")).read()
+    for name in names:
+        assert f"`--{name}`" in doc, name
+
+
+def test_image_has_scipy_for_the_genotype_model():
+    assert re.search(r"^\s*-\s*scipy", open(os.path.join(REPO, "environment.yml")).read(), re.M)
+    assert "scipy.special" in open(os.path.join(REPO, "Dockerfile")).read()

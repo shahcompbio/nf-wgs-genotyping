@@ -1,0 +1,4 @@
+tumor_id,normal_id,caller,vcf
+T1,N1,gridss,T1_vs_N1.gridss.ins.vcf
+T1,N1,generic,T1_vs_N1.generic.ins.vcf
+T2,N1,generic,T2_vs_N1.generic.ins.vcf

@@ -77,19 +77,12 @@ def _best(scores):
     return order[0], scores[order[0]] - scores[order[1]]
 
 
-def _locus_counts(bam, fa, aligner, chrom, alleles, min_mapq, min_baseq, count_duplicates, min_score_diff):
-    """alleles: [(pos, ref, alt)] -> (per-haplotype fragment counts [H0..Hk], uninformative, conflict)."""
-    k = len(alleles)
-    zero = ([0] * (k + 1), 0, 0)
-    contig_len = fa.get_reference_length(chrom)
-    fetch = lambda a, b: fa.fetch(chrom, max(a, 0), min(b, contig_len)).upper()   # noqa: E731
-    spans = [iu.variable_span(fetch, contig_len, pos, ref, alt) for pos, ref, alt in alleles]
-    vs, ve = min(s[0] for s in spans), max(s[1] for s in spans)
-    fs, fe = iu.footprint((vs, ve), contig_len)
+def locus_reads(bam, chrom, fs, fe, contig_len, min_mapq, count_duplicates):
+    """Reads passing the filters whose *unclipped* span reaches [fs, fe) (0-based)."""
     try:
         candidates = bam.fetch(chrom, max(0, fs - FETCH_MARGIN), min(contig_len, fe + FETCH_MARGIN))
     except ValueError:                    # contig absent from the BAM header
-        return zero
+        return []
     reads = []
     for a in candidates:
         if not _keep(a, min_mapq, count_duplicates):
@@ -97,17 +90,25 @@ def _locus_counts(bam, fa, aligner, chrom, alleles, min_mapq, min_baseq, count_d
         lead, trail = _clips(a.cigartuples)
         if a.reference_start - lead < fe and a.reference_end + trail > fs:
             reads.append(a)
-    if not reads:
-        return zero
-    flank = max(a.query_length for a in reads) + max(max(len(r), len(t)) for _, r, t in alleles) + FLANK_PAD
+    return reads
+
+
+def haplotypes(fetch, contig_len, vs, ve, alleles, max_read_len):
+    """[H0 = reference window, H1..Hk = window carrying each allele]; the window extends
+    (longest read + longest allele + FLANK_PAD) beyond the variable span [vs, ve)."""
+    flank = max_read_len + max(max(len(r), len(t)) for _, r, t in alleles) + FLANK_PAD
     ws, we = max(0, vs - flank), min(contig_len, ve + flank)
     window = fetch(ws, we)
-    haps = [window] + [iu.apply_allele(window, ws, pos, ref, alt) for pos, ref, alt in alleles]
+    return [window] + [iu.apply_allele(window, ws, pos, ref, alt) for pos, ref, alt in alleles]
+
+
+def assign_fragments(aligner, reads, haps, min_baseq, min_score_diff):
+    """Per-haplotype fragment counts, uninformative and conflict fragments (module docstring)."""
     fragments = {}
     for a in reads:
         query = _masked(a, min_baseq)
         fragments.setdefault(a.query_name, []).append([aligner.score(h, query) for h in haps])
-    counts, uninformative, conflict = [0] * (k + 1), 0, 0
+    counts, uninformative, conflict = [0] * len(haps), 0, 0
     for per_read in fragments.values():
         total = [sum(col) for col in zip(*per_read)]
         best, margin = _best(total)
@@ -120,6 +121,21 @@ def _locus_counts(bam, fa, aligner, chrom, alleles, min_mapq, min_baseq, count_d
         else:
             uninformative += 1
     return counts, uninformative, conflict
+
+
+def _locus_counts(bam, fa, aligner, chrom, alleles, min_mapq, min_baseq, count_duplicates, min_score_diff):
+    """alleles: [(pos, ref, alt)] -> (per-haplotype fragment counts [H0..Hk], uninformative, conflict)."""
+    zero = ([0] * (len(alleles) + 1), 0, 0)
+    contig_len = fa.get_reference_length(chrom)
+    fetch = lambda a, b: fa.fetch(chrom, max(a, 0), min(b, contig_len)).upper()   # noqa: E731
+    spans = [iu.variable_span(fetch, contig_len, pos, ref, alt) for pos, ref, alt in alleles]
+    vs, ve = min(s[0] for s in spans), max(s[1] for s in spans)
+    fs, fe = iu.footprint((vs, ve), contig_len)
+    reads = locus_reads(bam, chrom, fs, fe, contig_len, min_mapq, count_duplicates)
+    if not reads:
+        return zero
+    haps = haplotypes(fetch, contig_len, vs, ve, alleles, max(a.query_length for a in reads))
+    return assign_fragments(aligner, reads, haps, min_baseq, min_score_diff)
 
 
 def count_sites(bam_path, fasta_path, sites, min_mapq=20, min_baseq=20, count_duplicates=False,

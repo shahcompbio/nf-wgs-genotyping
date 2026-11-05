@@ -99,10 +99,13 @@ def test_sv_entry_stub_run_publishes_final_outputs(tmp_path):
     res, out = _run("sv_genotyping.nf", tmp_path)
     assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
     for name in ("STUB_sv_genotyping.csv.gz", "STUB_sv_genotyping.csv.gz.yaml", "STUB_genotyping_qc.json",
+                 "STUB_sv_adjacency_genotyping.csv.gz", "STUB_sv_adjacency_genotyping.csv.gz.yaml",
+                 "STUB_sv_adjacency_genotyping.bedpe",
                  "STUB_svtyper.vcf.gz", "STUB.lib_info.json", "union/STUB_union_svs.bedpe.gz",
-                 "union/STUB_union_svs.members.tsv.gz", "union/STUB_union_svs.vcf.gz"):
+                 "union/STUB_union_svs.members.tsv.gz", "union/STUB_union_sv_adjacencies.tsv.gz",
+                 "union/STUB_union_svs.vcf.gz"):
         assert (out / name).exists(), name
-    assert "SVTYPER" in res.stdout
+    assert "SVTYPER" in res.stdout and "SV_INS_COUNT" in res.stdout
 
 
 def test_main_nf_refuses_to_run(tmp_path):

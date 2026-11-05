@@ -4,8 +4,11 @@ process SV_FINALIZE {
 
     input:
     path union
+    path adjacencies
     path genotyped
     path manifest
+    path ins_counts
+    path ins_manifest
     path stats
     val sample_id
     tuple path(fasta), path(fai)
@@ -13,6 +16,9 @@ process SV_FINALIZE {
     output:
     path "${sample_id}_sv_genotyping.csv.gz"     , emit: table
     path "${sample_id}_sv_genotyping.csv.gz.yaml", emit: yaml
+    path "${sample_id}_sv_adjacency_genotyping.csv.gz"     , emit: adjacency_table
+    path "${sample_id}_sv_adjacency_genotyping.csv.gz.yaml", emit: adjacency_yaml
+    path "${sample_id}_sv_adjacency_genotyping.bedpe"      , emit: bedpe
     path "${sample_id}_genotyping_qc.json"       , emit: qc
     path "${sample_id}_svtyper.vcf.gz{,.tbi}"    , emit: vcf
     path "versions.yml"                          , emit: versions
@@ -21,7 +27,8 @@ process SV_FINALIZE {
     def ref     = fasta.name.startsWith('NO_FASTA') ? '' : "--reference ${fasta}"
     def contigs = params.contigs ? "--contigs '${params.contigs}'" : ''
     """
-    ${params.python} \$(command -v sv_finalize.py) --union ${union} --genotyped ${genotyped} --manifest ${manifest} \\
+    ${params.python} \$(command -v sv_finalize.py) --union ${union} --adjacencies ${adjacencies} \\
+        --genotyped ${genotyped} --manifest ${manifest} --ins-counts ${ins_counts} --ins-manifest ${ins_manifest} \\
         --stats ${stats} --sample-id '${sample_id}' ${ref} ${contigs} --outdir .
 
     cat <<-END_VERSIONS > versions.yml
@@ -35,6 +42,9 @@ process SV_FINALIZE {
     """
     echo | gzip > ${sample_id}_sv_genotyping.csv.gz
     touch ${sample_id}_sv_genotyping.csv.gz.yaml
+    echo | gzip > ${sample_id}_sv_adjacency_genotyping.csv.gz
+    touch ${sample_id}_sv_adjacency_genotyping.csv.gz.yaml
+    touch ${sample_id}_sv_adjacency_genotyping.bedpe
     echo '{}' > ${sample_id}_genotyping_qc.json
     echo | gzip > ${sample_id}_svtyper.vcf.gz
     touch ${sample_id}_svtyper.vcf.gz.tbi

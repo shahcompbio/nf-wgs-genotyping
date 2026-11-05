@@ -69,6 +69,32 @@
       "source_samples": "T1"
     }
   },
+  "ins_sites": {
+    "IMPRECISE": [
+      "4",
+      3000,
+      0,
+      null
+    ],
+    "INS1": [
+      "4",
+      1000,
+      0,
+      "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+    ],
+    "INS2": [
+      "4",
+      2000,
+      0,
+      "CACACACACACACACACACACACACACACACACACACACACACACACACA"
+    ],
+    "NO_EVIDENCE": [
+      "4",
+      3500,
+      0,
+      null
+    ]
+  },
   "normal": "N1",
   "other_tumor": "T2",
   "samplesheet": "tests/data/synthetic/samplesheet.csv",
@@ -85,8 +111,17 @@
     "not_in_target": [
       "73459",
       "81625"
+    ],
+    "shifted_del": [
+      2798774,
+      2799241
     ]
   },
+  "sv_ins_expected": {
+    "n_adjacencies": 5,
+    "n_clusters": 4
+  },
+  "sv_ins_samplesheet": "tests/data/synthetic/sv_ins_samplesheet.csv",
   "sv_samplesheet": "tests/data/synthetic/sv_samplesheet.csv",
   "sv_target": "NA12878",
   "target": "T1",
@@ -137,6 +172,26 @@
       "other_count": 0,
       "ref_count": 5,
       "uninformative_count": 1
+    }
+  },
+  "truth_ins": {
+    "INS1": {
+      "alt_fragments": 7,
+      "conflict_fragments": 0,
+      "ref_fragments": 6,
+      "uninformative_fragments": 1
+    },
+    "INS2": {
+      "alt_fragments": 4,
+      "conflict_fragments": 0,
+      "ref_fragments": 3,
+      "uninformative_fragments": 1
+    },
+    "NO_EVIDENCE": {
+      "alt_fragments": 0,
+      "conflict_fragments": 0,
+      "ref_fragments": 0,
+      "uninformative_fragments": 0
     }
   }
 }

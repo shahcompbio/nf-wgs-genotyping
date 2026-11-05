@@ -12,7 +12,7 @@ dependencies:
   - biopython=1.85       # indel_count.py: PairwiseAligner
   - numpy<2
   - pyyaml
-  - scipy
+  - scipy>=1.4           # presence_gt.py (stats.betabinom, beta tails); svtyper
   - cytoolz
   - htslib=1.20
   - samtools=1.20

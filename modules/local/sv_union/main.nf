@@ -10,9 +10,12 @@ process SV_UNION {
     output:
     path "${sample_id}_union_svs.bedpe.gz"        , emit: union
     path "${sample_id}_union_svs.members.tsv.gz"  , emit: members
+    path "${sample_id}_union_sv_adjacencies.tsv.gz", emit: adjacencies
     path "${sample_id}_union_svs.vcf.gz{,.tbi}"   , emit: vcf
     path "chunks/chunk_*.vcf"                     , emit: chunks
     path "chunks.manifest"                        , emit: manifest
+    path "ins_chunks/ins_chunk_*.tsv"             , emit: ins_chunks
+    path "ins_chunks.manifest"                    , emit: ins_manifest
     path "versions.yml"                           , emit: versions
 
     script:
@@ -21,7 +24,7 @@ process SV_UNION {
     """
     ${params.python} \$(command -v sv_union.py) --inputs ${tsvs} --sample-id '${sample_id}' ${ref} ${contigs} \\
         --slop ${params.sv_slop} --rep-priority '${params.sv_rep_priority}' \\
-        --chunk-size ${params.sv_chunk_size} --outdir .
+        --chunk-size ${params.sv_chunk_size} --ins-chunk-size ${params.sv_ins_chunk_size} --outdir .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -32,11 +35,14 @@ process SV_UNION {
 
     stub:
     """
-    mkdir -p chunks
+    mkdir -p chunks ins_chunks
     printf '##fileformat=VCFv4.2\\n' | tee chunks/chunk_00000.vcf > chunks/chunk_00001.vcf
     printf 'chunk_id\\tn_items\\nchunk_00000\\t0\\nchunk_00001\\t0\\n' > chunks.manifest
+    printf 'adj_id\\n' | tee ins_chunks/ins_chunk_00000.tsv > ins_chunks/ins_chunk_00001.tsv
+    printf 'chunk_id\\tn_items\\nins_chunk_00000\\t0\\nins_chunk_00001\\t0\\n' > ins_chunks.manifest
     echo | gzip > ${sample_id}_union_svs.bedpe.gz
     echo | gzip > ${sample_id}_union_svs.members.tsv.gz
+    echo | gzip > ${sample_id}_union_sv_adjacencies.tsv.gz
     echo | gzip > ${sample_id}_union_svs.vcf.gz
     touch ${sample_id}_union_svs.vcf.gz.tbi
     printf '"${task.process}":\\n    stub: true\\n' > versions.yml

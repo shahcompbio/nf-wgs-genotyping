@@ -58,6 +58,9 @@ def test_snv_profile_reproduces_synthetic_truth(tmp_path):
     with pysam.VariantFile(str(out / "T1_snv_genotyping.vcf.gz")) as vf:
         recs = [r for r in vf if r.chrom == "1" and r.pos == truth["S1"][1]]
     assert len(recs) == 1 and recs[0].samples["T1"]["AD"] == (t["ref_count"], t["alt_count"])
+    # allele-presence genotypes with the default parameters (10 ref / 9 alt: both alleles present)
+    assert s1["gt"] == "0/1" and recs[0].samples["T1"]["GT"] == (0, 1) and list(recs[0].format)[0] == "GT"
+    assert qc["gt_model"]["error_rate"] == pytest.approx(0.01 / 3) and sum(qc["gt_counts"].values()) == 4
     # indels (same run: samplesheet rows with variant_type indel)
     ind = pd.read_csv(out / "T1_indel_genotyping.csv.gz", dtype={"chromosome": str})
     sites = truth["indel_sites"]
@@ -68,6 +71,7 @@ def test_snv_profile_reproduces_synthetic_truth(tmp_path):
         assert {k: getattr(row, k) for k in truth["truth_indels"][name]} == truth["truth_indels"][name], name
     iqc = json.load(open(out / "T1_indel_qc.json"))
     assert iqc["chunks"] == 3 and iqc["positive_control_fraction"] == 1.0
+    assert set(ind["gt"]) == {"0/1"} and iqc["gt_model"]["error_rate"] == 0.01
     assert (out / "T1_indel_genotyping.vcf.gz.tbi").exists()
     assert (out / "union" / "T1_union_indels.vcf.gz.tbi").exists()
     assert (out / "inputs" / "T1_vs_N1.pindel.indels.stats.json").exists()
@@ -80,6 +84,21 @@ def test_snv_profile_with_a_v1_1_samplesheet_gives_snv_outputs_only(tmp_path):
     assert not list(out.glob("*indel*")) and not list((out / "union").glob("*indel*"))
 
 
+def _check_bedpe(out, sample, adj):
+    """<S>_sv_adjacency_genotyping.bedpe holds the adjacency table's rows: 0-based junction bases."""
+    path = out / f"{sample}_sv_adjacency_genotyping.bedpe"
+    with open(path) as fh:
+        assert fh.readline().startswith("#chrom1\tstart1\tend1\tchrom2\tstart2\tend2\tname\tscore\t")
+    bed = pd.read_csv(path, sep="\t", na_values=".", keep_default_na=False, dtype={"#chrom1": str, "chrom2": str})
+    assert len(bed) == len(adj) and set(bed["name"]) == set(adj["adj_id"])
+    m = bed.merge(adj, left_on="name", right_on="adj_id", validate="one_to_one")
+    assert (m["#chrom1"] == m["chromosome_1"].astype(str)).all() and (m["end1"] == m["position_1"]).all()
+    assert (m["chrom2"] == m["chromosome_2"].astype(str)).all() and (m["end2"] == m["position_2"]).all()
+    assert (m["start1"] == m["end1"] - 1).all() and (m["start2"] == m["end2"] - 1).all()
+    assert m["score"].fillna(-1).tolist() == m["alt_fragments_y"].fillna(-1).tolist()
+    return bed
+
+
 @pytest.mark.skipif(not sh.available(), reason="svtyper fork not importable (set SVTYPER_SRC)")
 def test_sv_profile_genotypes_na12878_union(tmp_path):
     out = _run("sv_genotyping.nf", "test_sv", tmp_path, "--svtyper_cmd", sh.svtyper_cmd())
@@ -89,3 +108,39 @@ def test_sv_profile_genotypes_na12878_union(tmp_path):
     assert qc["positive_control_fraction"] == 1.0 and qc["chunks"] == 2
     assert (df[~df.called_in_target].alt_fragments == 0).all()
     assert (out / "NA12878.lib_info.json").exists() and (out / "NA12878_svtyper.vcf.gz").exists()
+    # every distinct adjacency genotyped (8 = 6 clusters + 2 shifted second calls)
+    adj = pd.read_csv(out / "NA12878_sv_adjacency_genotyping.csv.gz", dtype={"chromosome_1": str})
+    assert len(adj) == 8 and qc["n_adjacencies"] == 8 and set(adj["genotyper"]) == {"svtyper"}
+    assert (adj["genotype_status"] != "missing_from_output").all()
+    assert qc["insertions"]["adjacencies"] == 0 and (out / "union" / "NA12878_union_sv_adjacencies.tsv.gz").exists()
+    _check_bedpe(out, "NA12878", adj)
+
+
+@pytest.mark.skipif(not sh.available(), reason="svtyper fork not importable (set SVTYPER_SRC)")
+def test_sv_entry_genotypes_synthetic_insertions(tmp_path):
+    truth = json.load(open(os.path.join(SYN, "truth.json")))
+    out = _run("sv_genotyping.nf", "test_sv", tmp_path, "--svtyper_cmd", sh.svtyper_cmd(),
+               "--samplesheet", os.path.join(SYN, "sv_ins_samplesheet.csv"),
+               "--target_bam", os.path.join(SYN, "target.bam"), "--sample_id", "T1",
+               "--reference_fasta", os.path.join(SYN, "ref.fa"), "--sv_ins_chunk_size", "2")
+    adj = pd.read_csv(out / "T1_sv_adjacency_genotyping.csv.gz", dtype={"chromosome_1": str})
+    clusters = pd.read_csv(out / "T1_sv_genotyping.csv.gz", dtype={"chromosome_1": str})
+    exp = truth["sv_ins_expected"]
+    assert (len(clusters), len(adj)) == (exp["n_clusters"], exp["n_adjacencies"])
+    sites = truth["ins_sites"]
+    counts = ["ref_fragments", "alt_fragments", "uninformative_fragments", "conflict_fragments"]
+    ins1 = adj[adj.position_1 == sites["INS1"][1]]
+    assert len(ins1) == 2 and ins1["sv_id"].nunique() == 1          # sequence + length-only call
+    for row in ins1.to_dict("records"):
+        assert {k: row[k] for k in counts} == truth["truth_ins"]["INS1"]
+    ins2 = adj[adj.position_1 == sites["INS2"][1]].iloc[0]
+    assert {k: ins2[k] for k in counts} == truth["truth_ins"]["INS2"]
+    status = dict(zip(adj.position_1, adj.genotype_status))
+    assert status[sites["IMPRECISE"][1]] == "skipped_imprecise"
+    assert status[sites["NO_EVIDENCE"][1]] == "no_evidence"
+    qc = json.load(open(out / "T1_genotyping_qc.json"))
+    assert qc["insertion_chunks"] == 3 and qc["insertions"]["adjacencies"] == 5
+    assert qc["insertions"]["status_counts"] == {"genotyped": 3, "no_evidence": 1, "skipped_imprecise": 1}
+    bed = _check_bedpe(out, "T1", adj).set_index("name")
+    ins1 = bed[bed.end1 == sites["INS1"][1]]
+    assert len(ins1) == 2 and (ins1.start2 == ins1.end1).all() and (ins1.sv_class == "INS").all()

@@ -3,8 +3,10 @@
  * nf-wgs-genotyping — SV entry point.
  *   nextflow run <org>/nf-wgs-genotyping -main-script sv_genotyping.nf \
  *     --samplesheet ss.csv --target_bam T.bam --sample_id T --reference_fasta ref.fa --outdir out
- * Union of PASS SVs (BRASS/GRIDSS/SvABA/generic VCFs in the samplesheet), clustered across callers
- * and samples, re-genotyped in the target BAM with svtyper (marcjwilliams1 fork). See docs/.
+ * Union of PASS SVs (BRASS/GRIDSS/SvABA/generic VCFs in the samplesheet): every distinct adjacency
+ * is re-genotyped in the target BAM, with svtyper (marcjwilliams1 fork) or, for insertions, by
+ * realignment to ref/insertion haplotypes (needs --reference_fasta); nearby adjacencies are
+ * summarized in bounded clusters. See docs/.
  */
 nextflow.enable.dsl = 2
 
