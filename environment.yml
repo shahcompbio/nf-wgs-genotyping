@@ -9,6 +9,7 @@ dependencies:
   - python=3.11
   - pysam=0.22
   - pandas=2.2
+  - biopython=1.85       # indel_count.py: PairwiseAligner
   - numpy<2
   - pyyaml
   - scipy

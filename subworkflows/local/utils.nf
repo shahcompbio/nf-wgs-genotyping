@@ -28,6 +28,7 @@ def targetBam() {
 
 /* [fasta, fai] or the NO_FASTA placeholders when --reference_fasta is not set */
 def referenceFasta() {
+    if (params.reference_fasta instanceof Boolean) { error "--reference_fasta needs a FASTA path" }
     if (!params.reference_fasta) {
         return [file("${projectDir}/assets/NO_FASTA"), file("${projectDir}/assets/NO_FASTA.fai")]
     }
@@ -37,8 +38,13 @@ def referenceFasta() {
     return [fa, fai]
 }
 
-/* Samplesheet rows -> [meta, vcf]; relative VCF paths resolve against the samplesheet directory. */
-def samplesheetRows(String path, List allowedCallers) {
+/*
+ * Samplesheet rows -> [meta, vcf]; relative VCF paths resolve against the samplesheet directory.
+ * allowedByType: {variant_type: [callers]}; the optional `variant_type` column defaults to
+ * defaultType when absent or blank. meta.id (= <tumor>_vs_<normal>.<caller>) is unique per
+ * variant type.
+ */
+def samplesheetRows(String path, Map allowedByType, String defaultType) {
     def ss = file(path, checkIfExists: true)
     def rows = ss.splitCsv(header: true)
     if (!rows) { error "Samplesheet ${ss} has no rows" }
@@ -47,14 +53,19 @@ def samplesheetRows(String path, List allowedCallers) {
         ['tumor_id', 'normal_id', 'caller', 'vcf'].each { col ->
             if (!r[col]) { error "Samplesheet ${ss}: missing '${col}' in row ${r}" }
         }
+        def type = r.variant_type?.trim() ?: defaultType
+        if (!allowedByType.containsKey(type)) {
+            error "Samplesheet ${ss}: variant_type '${type}' not supported by this workflow (allowed: ${allowedByType.keySet().join(', ')})"
+        }
+        def allowedCallers = allowedByType[type]
         if (!(r.caller in allowedCallers)) {
-            error "Samplesheet ${ss}: caller '${r.caller}' not supported by this workflow (allowed: ${allowedCallers.join(', ')})"
+            error "Samplesheet ${ss}: caller '${r.caller}' not supported for variant_type '${type}' (allowed: ${allowedCallers.join(', ')})"
         }
         def id = "${r.tumor_id}_vs_${r.normal_id}.${r.caller}"
-        if (!seen.add(id)) { error "Samplesheet ${ss}: duplicated tumor_id/normal_id/caller ${id}" }
+        if (!seen.add("${id}.${type}")) { error "Samplesheet ${ss}: duplicated tumor_id/normal_id/caller/variant_type ${id} (${type})" }
         def vcf = r.vcf.startsWith('/') ? file(r.vcf) : ss.parent.resolve(r.vcf)
         if (!vcf.exists()) { error "Samplesheet ${ss}: VCF not found: ${vcf}" }
-        [[id: id, tumor_id: r.tumor_id, normal_id: r.normal_id, caller: r.caller], vcf]
+        [[id: id, tumor_id: r.tumor_id, normal_id: r.normal_id, caller: r.caller, variant_type: type], vcf]
     }
 }
 

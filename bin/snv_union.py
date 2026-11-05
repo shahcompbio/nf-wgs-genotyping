@@ -42,14 +42,14 @@ def build_union(tsvs, sample_id, order):
     return pd.DataFrame(rows, columns=UNION_COLUMNS)
 
 
-def _write_vcf(df, path_vcf, order, fai=None):
+def _write_vcf(df, path_vcf, order, fai=None, source="snv_union"):
     lengths = {}
     if fai:
         with open(fai) as fh:
             lengths = {l.split("\t")[0]: l.split("\t")[1] for l in fh if l.strip()}
     contigs = list(order) + sorted(set(df["chromosome"]) - set(order))
     with open(path_vcf, "w") as fh:
-        fh.write("##fileformat=VCFv4.2\n##source=nf-wgs-genotyping snv_union\n")
+        fh.write(f"##fileformat=VCFv4.2\n##source=nf-wgs-genotyping {source}\n")
         for c in contigs:
             fh.write(f"##contig=<ID={c}" + (f",length={lengths[c]}" if c in lengths else "") + ">\n")
         fh.write('##INFO=<ID=CALLERS,Number=.,Type=String,Description="Callers with a PASS call">\n'

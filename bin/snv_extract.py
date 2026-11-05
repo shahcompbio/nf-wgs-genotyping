@@ -23,7 +23,6 @@ COLUMNS = ["chrom", "pos", "ref", "alt", "tumor_id", "normal_id", "caller"]
 
 def extract(vcf, caller, tumor_id, normal_id, contigs=None, fasta=None, missing_filter_is_pass=False,
             max_ref_mismatch_frac=0.01):
-    allowed = set(contigs) if contigs else None
     fa = None
     if fasta:
         import pysam
@@ -31,40 +30,26 @@ def extract(vcf, caller, tumor_id, normal_id, contigs=None, fasta=None, missing_
         fa = pysam.FastaFile(fasta)
     dropped = Counter()
     rows, seen = [], set()
-    records = 0
-    with gu.open_text(vcf) as fh:
-        for line in fh:
-            if line.startswith("#") or not line.strip():
+    for chrom, pos, ref, alt in gu.iter_pass_alleles(vcf, dropped, contigs, missing_filter_is_pass):
+        if len(ref) != 1 or len(alt) != 1 or ref not in BASES or alt not in BASES or ref == alt:
+            dropped["not_snv"] += 1
+            continue
+        if fa is not None:
+            try:
+                fa_base = fa.fetch(chrom, pos - 1, pos).upper()
+            except (KeyError, ValueError):
+                fa_base = None
+            if fa_base != ref:
+                dropped["ref_mismatch"] += 1
                 continue
-            records += 1
-            f = line.rstrip("\n").split("\t")
-            chrom, pos, ref, alts, filt = f[0], int(f[1]), f[3].upper(), f[4], f[6]
-            if not (filt == "PASS" or (filt == "." and missing_filter_is_pass)):
-                dropped["not_pass"] += 1
-                continue
-            if allowed is not None and chrom not in allowed:
-                dropped["off_contig"] += 1
-                continue
-            for alt in alts.split(","):
-                alt = alt.upper()
-                if len(ref) != 1 or len(alt) != 1 or ref not in BASES or alt not in BASES or ref == alt:
-                    dropped["not_snv"] += 1
-                    continue
-                if fa is not None:
-                    try:
-                        fa_base = fa.fetch(chrom, pos - 1, pos).upper()
-                    except (KeyError, ValueError):
-                        fa_base = None
-                    if fa_base != ref:
-                        dropped["ref_mismatch"] += 1
-                        continue
-                key = (chrom, pos, ref, alt)
-                if key in seen:
-                    dropped["duplicate"] += 1
-                    continue
-                seen.add(key)
-                rows.append({"chrom": chrom, "pos": pos, "ref": ref, "alt": alt, "tumor_id": tumor_id,
-                             "normal_id": normal_id, "caller": caller})
+        key = (chrom, pos, ref, alt)
+        if key in seen:
+            dropped["duplicate"] += 1
+            continue
+        seen.add(key)
+        rows.append({"chrom": chrom, "pos": pos, "ref": ref, "alt": alt, "tumor_id": tumor_id,
+                     "normal_id": normal_id, "caller": caller})
+    records = dropped["records"]
     snv_alleles = len(rows) + dropped["duplicate"] + dropped["ref_mismatch"]
     if fa is not None and snv_alleles and dropped["ref_mismatch"] / snv_alleles > max_ref_mismatch_frac:
         raise ValueError(

@@ -20,6 +20,29 @@ def open_text(path, mode="rt"):
     return open(path, mode.replace("t", "") or "r")
 
 
+def iter_pass_alleles(vcf, tally, contigs=None, missing_filter_is_pass=False):
+    """Yield (chrom, pos, REF, ALT) (upper case) for every ALT of every PASS record on an allowed
+    contig of a plain or gzipped VCF. FILTER must be exactly PASS ('.' too with
+    missing_filter_is_pass); multiallelic records give one item per ALT. Counts go to the
+    Counter ``tally``: records, not_pass, off_contig."""
+    allowed = set(contigs) if contigs else None
+    with open_text(vcf) as fh:
+        for line in fh:
+            if line.startswith("#") or not line.strip():
+                continue
+            tally["records"] += 1
+            f = line.rstrip("\n").split("\t")
+            chrom, pos, ref, alts, filt = f[0], int(f[1]), f[3].upper(), f[4], f[6]
+            if not (filt == "PASS" or (filt == "." and missing_filter_is_pass)):
+                tally["not_pass"] += 1
+                continue
+            if allowed is not None and chrom not in allowed:
+                tally["off_contig"] += 1
+                continue
+            for alt in alts.split(","):
+                yield chrom, pos, ref, alt.upper()
+
+
 def parse_contigs(value):
     """'1, 2,X' -> ['1', '2', 'X']; empty/None -> None (meaning: no restriction)."""
     if value is None:

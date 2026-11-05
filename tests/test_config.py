@@ -38,3 +38,25 @@ def test_container_is_a_reference_singularity_and_docker_can_pull():
     ref = m.group(1)
     pattern = r"(docker://)?([a-z0-9.-]+(:[0-9]+)?/)?[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9._-]+"
     assert re.fullmatch(pattern, ref), f"params.container {ref!r} is not a pullable image reference"
+
+
+def _param(name):
+    m = re.search(rf"^\s*{name}\s*=\s*(\S+)", _config_text(), re.M)
+    assert m, f"params.{name} not found in nextflow.config"
+    return m.group(1).strip("'")
+
+
+def test_indel_parameters_have_documented_defaults():
+    assert (_param("indel_max_length"), _param("indel_min_score_diff"), _param("indel_chunk_size")) == \
+        ("50", "5", "1000")
+    doc = open(os.path.join(REPO, "docs", "params.md")).read()
+    for name in ("indel_max_length", "indel_min_score_diff", "indel_chunk_size"):
+        assert f"`--{name}`" in doc, name
+
+
+def test_container_tag_matches_pipeline_version_and_image_has_biopython():
+    version = re.search(r"version\s*=\s*'([^']+)'", _config_text()).group(1)
+    assert _param("container").rsplit(":", 1)[1] == version
+    assert re.search(r"^\s*-\s*biopython", open(os.path.join(REPO, "environment.yml")).read(), re.M)
+    docker = open(os.path.join(REPO, "Dockerfile")).read()
+    assert f'image.version="{version}"' in docker and "import pysam, pandas, yaml, svtyper.classic, Bio" in docker

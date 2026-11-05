@@ -13,7 +13,7 @@ include { SV_GENOTYPING } from './workflows/sv_genotyping'
 
 workflow {
     requireParams(['samplesheet', 'target_bam', 'sample_id'])
-    def rows = samplesheetRows(params.samplesheet, ['brass', 'gridss', 'svaba', 'generic'])
+    def rows = samplesheetRows(params.samplesheet, [sv: ['brass', 'gridss', 'svaba', 'generic']], 'sv')
     SV_GENOTYPING(Channel.fromList(rows), Channel.value(targetBam()), Channel.value(referenceFasta()),
                   params.sample_id)
     publishVersions(SV_GENOTYPING.out.versions)

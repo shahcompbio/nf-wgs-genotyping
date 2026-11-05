@@ -58,6 +58,26 @@ def test_snv_profile_reproduces_synthetic_truth(tmp_path):
     with pysam.VariantFile(str(out / "T1_snv_genotyping.vcf.gz")) as vf:
         recs = [r for r in vf if r.chrom == "1" and r.pos == truth["S1"][1]]
     assert len(recs) == 1 and recs[0].samples["T1"]["AD"] == (t["ref_count"], t["alt_count"])
+    # indels (same run: samplesheet rows with variant_type indel)
+    ind = pd.read_csv(out / "T1_indel_genotyping.csv.gz", dtype={"chromosome": str})
+    sites = truth["indel_sites"]
+    got = {(r.chromosome, r.position, r.ref, r.alt): r for r in ind.itertuples(index=False)}
+    assert len(ind) == len(sites)
+    for name, key in sites.items():
+        row = got[tuple(key)]
+        assert {k: getattr(row, k) for k in truth["truth_indels"][name]} == truth["truth_indels"][name], name
+    iqc = json.load(open(out / "T1_indel_qc.json"))
+    assert iqc["chunks"] == 3 and iqc["positive_control_fraction"] == 1.0
+    assert (out / "T1_indel_genotyping.vcf.gz.tbi").exists()
+    assert (out / "union" / "T1_union_indels.vcf.gz.tbi").exists()
+    assert (out / "inputs" / "T1_vs_N1.pindel.indels.stats.json").exists()
+
+
+def test_snv_profile_with_a_v1_1_samplesheet_gives_snv_outputs_only(tmp_path):
+    out = _run("snv_genotyping.nf", "test_snv", tmp_path, "--samplesheet",
+               os.path.join(SYN, "snv_samplesheet.csv"))
+    assert len(pd.read_csv(out / "T1_snv_genotyping.csv.gz")) == 4
+    assert not list(out.glob("*indel*")) and not list((out / "union").glob("*indel*"))
 
 
 @pytest.mark.skipif(not sh.available(), reason="svtyper fork not importable (set SVTYPER_SRC)")

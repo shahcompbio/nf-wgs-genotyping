@@ -1,0 +1,7 @@
+tumor_id,normal_id,caller,vcf,variant_type
+T1,N1,caveman,T1_vs_N1.caveman.vcf,snv
+T1,N1,mutect,T1_vs_N1.mutect.vcf,snv
+T2,N1,strelka,T2_vs_N1.strelka.vcf,snv
+T1,N1,pindel,T1_vs_N1.pindel.vcf,indel
+T1,N1,strelka,T1_vs_N1.strelka.indels.vcf,indel
+T2,N1,mutect,T2_vs_N1.mutect.indels.vcf,indel

@@ -1,0 +1,5 @@
+tumor_id,normal_id,caller,vcf,variant_type
+STUB,N,generic,a.vcf,snv
+T2,N,generic,b.vcf,snv
+STUB,N,pindel,a.vcf,indel
+T2,N,mutect,b.vcf,indel

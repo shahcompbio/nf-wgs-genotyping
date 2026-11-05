@@ -131,3 +131,22 @@ def test_write_json_is_sorted_and_stable(tmp_path):
     gu.write_json({"b": 1, "a": {"d": 2, "c": 3}}, str(p))
     assert json.loads(p.read_text()) == {"a": {"c": 3, "d": 2}, "b": 1}
     assert p.read_text().index('"a"') < p.read_text().index('"b"')
+
+
+def test_iter_pass_alleles_filters_records_and_splits_alts(tmp_path):
+    from collections import Counter
+
+    vcf = tmp_path / "x.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+                   "1\t10\t.\tac\tA,acg\t.\tPASS\t.\n"
+                   "1\t20\t.\tA\tG\t.\tLowQual\t.\n"
+                   "1\t30\t.\tA\tG\t.\t.\t.\n"
+                   "MT\t5\t.\tA\tG\t.\tPASS\t.\n\n")
+    tally = Counter()
+    got = list(gu.iter_pass_alleles(str(vcf), tally, contigs=["1"]))
+    assert got == [("1", 10, "AC", "A"), ("1", 10, "AC", "ACG")]
+    assert (tally["records"], tally["not_pass"], tally["off_contig"]) == (4, 2, 1)
+    tally = Counter()
+    got = list(gu.iter_pass_alleles(str(vcf), tally, missing_filter_is_pass=True))
+    assert [g[1] for g in got] == [10, 10, 30, 5]
+    assert tally["not_pass"] == 1 and tally["off_contig"] == 0

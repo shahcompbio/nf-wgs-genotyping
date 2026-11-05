@@ -30,6 +30,36 @@ FILTER `PASS`, sample column `<S>`. Header = union VCF header (contigs with leng
 There is no `GT`: the pipeline counts fragments and makes no genotype call; tools that require
 `GT` need one added downstream.
 
+## Indel (`snv_genotyping.nf`, samplesheet rows with `variant_type` `indel`)
+
+Written only when the samplesheet has `indel` rows.
+
+| File | Content |
+|---|---|
+| `<S>_indel_genotyping.csv.gz` (+ `.yaml`) | One row per union indel allele (columns below). |
+| `<S>_indel_genotyping.vcf.gz(.tbi)` | The same rows as a single-sample VCF (below). |
+| `<S>_indel_qc.json` | Union size, `loci`, `called_in_target`, `positive_control_fraction`, uninformative and conflict fragments (summed once per locus), median depth, per-input stats. |
+| `union/<S>_union_indels.tsv.gz` | Union with locus and provenance columns. |
+| `union/<S>_union_indels.vcf.gz(.tbi)` | Sites-only union VCF (INFO as for SNVs). |
+| `inputs/*.indels.stats.json` | Per caller VCF: records, kept, `normalized` (representation changed by left-alignment/trimming), drops by reason (`not_pass, not_indel, mnv, too_long, off_contig, ref_mismatch, duplicate`). |
+
+Alleles are normalized (left-aligned, trimmed; a pure insertion/deletion keeps its shared first
+base), so the same event from different callers is one row.
+
+`<S>_indel_genotyping.csv.gz` columns: `sample_id, chromosome, position (1-based), ref, alt,
+indel_length` (len(alt) − len(ref): + insertion, − deletion), `ref_count, alt_count, other_count`
+(fragments, each counted once, supporting the reference, this allele, or another union allele of the
+same locus), `depth = ref+alt+other`, `vaf = alt/(ref+alt)` (NaN if 0), `uninformative_count`
+(fragments reaching the locus that support no haplotype by `--indel_min_score_diff`, e.g. ending
+inside the repeat), `conflict_count` (mates supporting different haplotypes),
+`locus_id` (`chrom:start-end`), `var_start, var_end` (1-based reference bases a read must reach:
+every equivalent placement of the event plus one flanking base each side), then the provenance
+columns of the SNV table. `uninformative_count` and `conflict_count` are per locus: alleles of one
+locus share them.
+
+`<S>_indel_genotyping.vcf.gz`: as the SNV VCF, plus INFO `LOCUS` (= `locus_id`) and FORMAT `UF`
+(= `uninformative_count`); `OC` = `other_count` (other alleles of the locus); no `GT`.
+
 ## SV (`sv_genotyping.nf`)
 
 | File | Content |

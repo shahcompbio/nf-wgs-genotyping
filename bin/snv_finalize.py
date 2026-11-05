@@ -42,10 +42,13 @@ def _chunk_id(path):
     return m.group(1)
 
 
-def finalize(union_tsv, counts_files, manifest, sample_id, stats_files=()):
+def join_counts(union_tsv, counts_files, manifest, count_columns, union_dtypes=None):
+    """Explicit gather: fail unless the counts files are exactly the manifest's chunks and every
+    union row has exactly one counts row (joined on chromosome, position, ref, alt)."""
     gu.check_gather(manifest, [_chunk_id(p) for p in counts_files])
     dt = {"chromosome": str, "ref": str, "alt": str}
-    union = pd.read_csv(union_tsv, sep="\t", dtype={**dt, "callers": str, "source_samples": str, "sources": str})
+    union = pd.read_csv(union_tsv, sep="\t", dtype={**dt, "callers": str, "source_samples": str, "sources": str,
+                                                    **(union_dtypes or {})})
     counts = pd.concat([pd.read_csv(p, sep="\t", dtype=dt) for p in counts_files], ignore_index=True)
     if counts.duplicated(KEYS).any():
         raise ValueError("duplicated counts rows for some union sites")
@@ -55,8 +58,13 @@ def finalize(union_tsv, counts_files, manifest, sample_id, stats_files=()):
         raise ValueError(f"union sites and counts rows disagree for {len(bad)} sites, e.g. "
                          f"{bad[KEYS].head(3).values.tolist()}")
     df = union.merge(counts, on=KEYS, how="left")
-    for c in ("ref_count", "alt_count", "other_count", "conflict_count"):
+    for c in count_columns:
         df[c] = df[c].astype(int)
+    return df
+
+
+def finalize(union_tsv, counts_files, manifest, sample_id, stats_files=()):
+    df = join_counts(union_tsv, counts_files, manifest, ("ref_count", "alt_count", "other_count", "conflict_count"))
     df["depth"] = df["ref_count"] + df["alt_count"] + df["other_count"]
     denom = df["ref_count"] + df["alt_count"]
     df["vaf"] = np.where(denom > 0, df["alt_count"] / denom.where(denom > 0, 1), np.nan)
@@ -78,14 +86,15 @@ def finalize(union_tsv, counts_files, manifest, sample_id, stats_files=()):
     return df[FINAL_COLUMNS], qc
 
 
-def write_vcf(df, union_vcf, path, sample_id):
+def write_vcf(df, union_vcf, path, sample_id, header_lines=VCF_HEADER_LINES, extra=None):
     """Write the final table `df` as a bgzipped, tabix-indexed VCF at `path` (must end in .vcf.gz):
-    one record per row in the same (union, contig-sorted) order, header from `union_vcf`."""
+    one record per row in the same (union, contig-sorted) order, header from `union_vcf` plus
+    `header_lines`. `extra(record, row)` sets further INFO/FORMAT fields."""
     if not path.endswith(".vcf.gz"):
         raise ValueError(f"VCF output must end in .vcf.gz: {path}")
     with pysam.VariantFile(union_vcf) as src:
         header = src.header.copy()
-    for line in VCF_HEADER_LINES:
+    for line in header_lines:
         header.add_line(line)
     header.add_sample(sample_id)
     plain = path[:-3]
@@ -105,6 +114,8 @@ def write_vcf(df, union_vcf, path, sample_id):
             s["DP"] = int(r.depth)
             s["AF"] = (None,) if np.isnan(r.vaf) else (float(r.vaf),)
             s["OC"] = int(r.other_count)
+            if extra is not None:
+                extra(rec, r)
             out.write(rec)
     pysam.tabix_index(plain, preset="vcf", force=True)
 

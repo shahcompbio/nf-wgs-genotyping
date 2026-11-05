@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.2.0 (2026-11-04)
+
+- Indels in `snv_genotyping.nf`: samplesheet rows with the new optional column `variant_type`
+  `indel` (callers `pindel`, `mutect`, `strelka`, `generic`) are extracted (PASS; multiallelic
+  split; plain-base alleles of different lengths, complex del-ins included; MNVs and changes
+  ≥ `--indel_max_length` 50 bp dropped), left-aligned and trimmed against the FASTA, unioned with
+  provenance, grouped into loci (alleles whose repeat-aware footprints overlap) and genotyped by
+  semi-global realignment of every fragment to the reference and allele haplotypes (Biopython
+  `PairwiseAligner`, BWA-MEM scores; soft clips included; BQ < `--min_baseq` masked;
+  `--indel_min_score_diff` 5). New outputs `<S>_indel_genotyping.csv.gz(.yaml)`,
+  `<S>_indel_genotyping.vcf.gz(.tbi)`, `<S>_indel_qc.json`, `union/<S>_union_indels.*`,
+  `inputs/*.indels.stats.json`. New params `indel_max_length`, `indel_min_score_diff`,
+  `indel_chunk_size`. `--reference_fasta` is required when there are indel rows.
+- Without `variant_type` (v1.1 samplesheets) every row is `snv`: SNV outputs are unchanged and no
+  indel step runs. `sv_genotyping.nf` accepts `variant_type` `sv` only (the default).
+- Image `mattmyers/nf-wgs-genotyping:1.2.0` (adds `biopython=1.85`); `params.container` updated.
+- Internal: `geno_utils.iter_pass_alleles` (record filtering shared by SNV and indel extraction),
+  `snv_finalize.join_counts` / `write_vcf(header_lines, extra)` reused by `indel_finalize.py`;
+  test fixtures gain contig 3 with designed indel loci (contigs 1–2 and SNV truth unchanged).
+
 ## v1.1.0 (2026-11-04)
 
 - SNV: `<S>_snv_genotyping.vcf.gz` (+ `.tbi`) next to the CSV — one record per CSV row, same order.

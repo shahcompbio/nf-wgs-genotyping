@@ -36,6 +36,65 @@ def test_snv_entry_stub_run_publishes_final_outputs(tmp_path):
     assert "SNV_COUNT" in res.stdout
 
 
+INDEL_OUTPUTS = ("STUB_indel_genotyping.csv.gz", "STUB_indel_genotyping.csv.gz.yaml", "STUB_indel_qc.json",
+                 "STUB_indel_genotyping.vcf.gz", "STUB_indel_genotyping.vcf.gz.tbi",
+                 "union/STUB_union_indels.tsv.gz", "union/STUB_union_indels.vcf.gz")
+
+
+def test_snv_entry_without_indel_rows_runs_no_indel_steps(tmp_path):
+    res, out = _run("snv_genotyping.nf", tmp_path)          # stub samplesheet: no variant_type column
+    assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
+    assert not any((out / name).exists() for name in INDEL_OUTPUTS)
+    assert "INDEL_" not in res.stdout
+
+
+def test_snv_entry_with_indel_rows_publishes_indel_outputs(tmp_path):
+    ss = os.path.join(REPO, "tests", "stub", "snv_indel_samplesheet.csv")
+    res, out = _run("snv_genotyping.nf", tmp_path, "--samplesheet", ss)
+    assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
+    for name in INDEL_OUTPUTS + ("STUB_snv_genotyping.csv.gz", "inputs/STUB_vs_N.pindel.indels.stats.json"):
+        assert (out / name).exists(), name
+    assert "INDEL_COUNT" in res.stdout and "SNV_COUNT" in res.stdout
+
+
+def _samplesheet(tmp_path, rows, header="tumor_id,normal_id,caller,vcf,variant_type"):
+    vcf = tmp_path / "x.vcf"
+    vcf.write_text("")
+    ss = tmp_path / "ss.csv"
+    ss.write_text(header + "\n" + "".join(r.format(vcf=vcf) + "\n" for r in rows))
+    return str(ss)
+
+
+def test_snv_entry_indel_rows_need_a_reference(tmp_path):
+    ss = _samplesheet(tmp_path, ["T,N,pindel,{vcf},indel"])
+    noref = tmp_path / "noref.config"
+    noref.write_text("params.reference_fasta = null\n")     # the stub profile sets one
+    res, _ = _run("snv_genotyping.nf", tmp_path, "--samplesheet", ss, "-c", str(noref))
+    assert res.returncode != 0
+    assert "Indel genotyping needs --reference_fasta" in (res.stdout + res.stderr)
+    # `--reference_fasta ''` is the Boolean true in Nextflow: a clear error, not a crash
+    res, _ = _run("snv_genotyping.nf", tmp_path, "--reference_fasta", "")
+    assert res.returncode != 0
+    assert "--reference_fasta needs a FASTA path" in (res.stdout + res.stderr)
+
+
+@pytest.mark.parametrize("row,word", [("T,N,pindel,{vcf},snv", "pindel"), ("T,N,caveman,{vcf},indel", "caveman"),
+                                      ("T,N,mutect,{vcf},sv", "variant_type")])
+def test_snv_entry_rejects_callers_not_valid_for_the_variant_type(tmp_path, row, word):
+    res, _ = _run("snv_genotyping.nf", tmp_path, "--samplesheet", _samplesheet(tmp_path, [row]))
+    assert res.returncode != 0
+    assert word in (res.stdout + res.stderr)
+
+
+def test_snv_entry_rejects_duplicated_rows_per_variant_type(tmp_path):
+    ok = _samplesheet(tmp_path, ["STUB,N,mutect,{vcf},snv", "STUB,N,mutect,{vcf},indel"])
+    res, _ = _run("snv_genotyping.nf", tmp_path, "--samplesheet", ok)
+    assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
+    dup = _samplesheet(tmp_path, ["STUB,N,mutect,{vcf},indel", "STUB,N,mutect,{vcf},indel"])
+    res, _ = _run("snv_genotyping.nf", tmp_path, "--samplesheet", dup)
+    assert res.returncode != 0 and "duplicated" in (res.stdout + res.stderr)
+
+
 def test_sv_entry_stub_run_publishes_final_outputs(tmp_path):
     res, out = _run("sv_genotyping.nf", tmp_path)
     assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
