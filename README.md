@@ -17,7 +17,7 @@ read filters and an explicit, manifest-checked gather.
 
 ```bash
 # from GitHub (pinned release); -main-script selects the pipeline
-nextflow run shahcompbio/nf-wgs-genotyping -revision v1.0.1 -main-script snv_genotyping.nf -profile iris \
+nextflow run shahcompbio/nf-wgs-genotyping -revision v1.1.0 -main-script snv_genotyping.nf -profile iris \
     --samplesheet samplesheet.csv --target_bam T1.bam --sample_id T1 \
     --reference_fasta /path/GRCh37.fasta --outdir results
 
@@ -98,7 +98,7 @@ See [docs/params.md](docs/params.md) and [docs/outputs.md](docs/outputs.md).
 The isabl apps `SNV_GENOTYPING` / `SV_GENOTYPING` (papaemmelab `isabl_apps`, GRCh37) write
 `samplesheet.csv` from the individual's SUCCEEDED caller analyses and call
 `isabl_apps.nextflow.utils.create_nextflow_script` with `nf_tool="shahcompbio/nf-wgs-genotyping
--main-script <entry>.nf"`, `-revision v1.0.1`, `-profile iris` and a per-analysis work dir.
+-main-script <entry>.nf"`, `-revision v1.1.0`, `-profile iris` and a per-analysis work dir.
 Result patterns match the file names in [docs/outputs.md](docs/outputs.md).
 
 ```bash
@@ -111,22 +111,23 @@ pip install -e /data1/shahs3/users/myersm2/repos/genotyping-dev/isabl_apps   # f
 
 # one target (tumor or normal WGS experiment); without --commit isabl only stages the analysis
 # (creates the record, writes .script.sh and samplesheet.csv) -- inspect them, then submit
-isabl apps-grch37 snv-genotyping-1.0.0 -fi system_id <TARGET_SYSTEM_ID>
-isabl apps-grch37 snv-genotyping-1.0.0 -fi system_id <TARGET_SYSTEM_ID> --commit
+isabl apps-grch37 snv-genotyping-1.1.0 -fi system_id <TARGET_SYSTEM_ID>
+isabl apps-grch37 snv-genotyping-1.1.0 -fi system_id <TARGET_SYSTEM_ID> --commit
 isabl apps-grch37 sv-genotyping-1.0.0  -fi system_id <TARGET_SYSTEM_ID> --commit
 
 # every WGS experiment of a patient as targets
-isabl apps-grch37 snv-genotyping-1.0.0 -fi sample__individual__system_id <INDIVIDUAL_SYSTEM_ID> \
+isabl apps-grch37 snv-genotyping-1.1.0 -fi sample__individual__system_id <INDIVIDUAL_SYSTEM_ID> \
     -fi technique__method WG --commit
 
 # genotype even if some of the patient's tumors have no caller analyses
 isabl apps-grch37 sv-genotyping-1.0.0 -fi system_id <TARGET_SYSTEM_ID> --allow-unpaired-tumors --commit
 ```
 
-Requires the `v1.0.1` tag of `shahcompbio/nf-wgs-genotyping` to be readable by Nextflow (a public
+Requires the `v1.1.0` tag of `shahcompbio/nf-wgs-genotyping` to be readable by Nextflow (a public
 repo, or a GitHub token in `$NXF_HOME/scm` of the user running the head job; an anonymous request to
 a private repo returns `Remote resource not found`) and `mattmyers/nf-wgs-genotyping:1.0.1` on
-Docker Hub.
+Docker Hub (the image is unchanged in v1.1.0). App versions: `SNV_GENOTYPING` 1.1.0 (adds the VCF
+result), `SV_GENOTYPING` 1.0.0.
 
 ## Software
 

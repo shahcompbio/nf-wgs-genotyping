@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Gather SNV counts (explicitly checked against the chunk manifest), join them onto the union,
-and write the final genotyping table, its csverve-style YAML, and a QC JSON."""
+and write the final genotyping table, its csverve-style YAML, a QC JSON, and a single-sample VCF
+of the same rows (bgzipped + tabix index; FORMAT counts only, no GT)."""
 import argparse
 import json
 import os
@@ -9,6 +10,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+import pysam
 
 import geno_utils as gu
 
@@ -21,6 +23,16 @@ DTYPES = {"sample_id": "category", "chromosome": "category", "position": "int", 
           "vaf": "float", "n_callers": "int", "callers": "str", "n_source_samples": "int",
           "source_samples": "str", "sources": "str", "called_in_target": "bool"}
 _CHUNK_RE = re.compile(r"counts_(chunk_\d+)\.tsv$")
+# Added to the union VCF's header (contigs + INFO CALLERS/SAMPLES/NCALLERS/NSAMPLES/INTARGET).
+# No GT: the pipeline counts fragments and makes no genotype call.
+VCF_HEADER_LINES = (
+    '##INFO=<ID=SOURCES,Number=.,Type=String,Description="Source calls as <tumor>_vs_<normal>:<caller>">',
+    '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Fragments supporting ref and alt '
+    '(each fragment counted once; filters in docs/params.md)">',
+    '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Fragments counted: ref + alt + other">',
+    '##FORMAT=<ID=AF,Number=A,Type=Float,Description="alt / (ref + alt); missing when ref + alt = 0">',
+    '##FORMAT=<ID=OC,Number=1,Type=Integer,Description="Fragments with a base other than ref or alt">',
+)
 
 
 def _chunk_id(path):
@@ -66,9 +78,41 @@ def finalize(union_tsv, counts_files, manifest, sample_id, stats_files=()):
     return df[FINAL_COLUMNS], qc
 
 
+def write_vcf(df, union_vcf, path, sample_id):
+    """Write the final table `df` as a bgzipped, tabix-indexed VCF at `path` (must end in .vcf.gz):
+    one record per row in the same (union, contig-sorted) order, header from `union_vcf`."""
+    if not path.endswith(".vcf.gz"):
+        raise ValueError(f"VCF output must end in .vcf.gz: {path}")
+    with pysam.VariantFile(union_vcf) as src:
+        header = src.header.copy()
+    for line in VCF_HEADER_LINES:
+        header.add_line(line)
+    header.add_sample(sample_id)
+    plain = path[:-3]
+    with pysam.VariantFile(plain, "w", header=header) as out:
+        for r in df.itertuples(index=False):
+            rec = out.new_record(contig=str(r.chromosome), start=int(r.position) - 1,
+                                 alleles=(str(r.ref), str(r.alt)), filter="PASS")
+            rec.info["CALLERS"] = tuple(r.callers.split(";"))
+            rec.info["SAMPLES"] = tuple(r.source_samples.split(";"))
+            rec.info["NCALLERS"] = int(r.n_callers)
+            rec.info["NSAMPLES"] = int(r.n_source_samples)
+            rec.info["SOURCES"] = tuple(r.sources.split(";"))
+            if r.called_in_target:
+                rec.info["INTARGET"] = True
+            s = rec.samples[sample_id]
+            s["AD"] = (int(r.ref_count), int(r.alt_count))
+            s["DP"] = int(r.depth)
+            s["AF"] = (None,) if np.isnan(r.vaf) else (float(r.vaf),)
+            s["OC"] = int(r.other_count)
+            out.write(rec)
+    pysam.tabix_index(plain, preset="vcf", force=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--union", required=True)
+    ap.add_argument("--union-vcf", required=True, help="snv_union VCF (its header is reused)")
     ap.add_argument("--counts", nargs="+", required=True)
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--stats", nargs="*", default=[])
@@ -78,6 +122,7 @@ def main(argv=None):
     df, qc = finalize(a.union, a.counts, a.manifest, a.sample_id, a.stats)
     gu.write_table(df, os.path.join(a.outdir, f"{a.sample_id}_snv_genotyping.csv.gz"), DTYPES)
     gu.write_json(qc, os.path.join(a.outdir, f"{a.sample_id}_genotyping_qc.json"))
+    write_vcf(df, a.union_vcf, os.path.join(a.outdir, f"{a.sample_id}_snv_genotyping.vcf.gz"), a.sample_id)
     return 0
 
 

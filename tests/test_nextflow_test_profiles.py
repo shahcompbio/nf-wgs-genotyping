@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 import pandas as pd
+import pysam
 import pytest
 
 import svtyper_helpers as sh
@@ -53,6 +54,10 @@ def test_snv_profile_reproduces_synthetic_truth(tmp_path):
     assert qc["chunks"] == 2 and qc["conflict_fragments"] == t["conflict_count"]
     assert (out / "union" / "T1_union_snvs.vcf.gz.tbi").exists()
     assert (out / "inputs").is_dir()
+    assert (out / "T1_snv_genotyping.vcf.gz.tbi").exists()
+    with pysam.VariantFile(str(out / "T1_snv_genotyping.vcf.gz")) as vf:
+        recs = [r for r in vf if r.chrom == "1" and r.pos == truth["S1"][1]]
+    assert len(recs) == 1 and recs[0].samples["T1"]["AD"] == (t["ref_count"], t["alt_count"])
 
 
 @pytest.mark.skipif(not sh.available(), reason="svtyper fork not importable (set SVTYPER_SRC)")

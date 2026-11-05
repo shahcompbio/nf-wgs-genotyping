@@ -8,6 +8,7 @@ All files are prefixed with `--sample_id` (`<S>`). Count tables are gzipped CSV 
 | File | Content |
 |---|---|
 | `<S>_snv_genotyping.csv.gz` (+ `.yaml`) | One row per union SNV (columns below). |
+| `<S>_snv_genotyping.vcf.gz(.tbi)` | The same rows as a single-sample VCF (below). |
 | `<S>_genotyping_qc.json` | Union size, `called_in_target`, `positive_control_fraction` (share of the target's own calls with alt ≥ 1), conflict fragments, median depth, per-input extraction stats. |
 | `union/<S>_union_snvs.tsv.gz` | Union with provenance. |
 | `union/<S>_union_snvs.vcf.gz(.tbi)` | Sites-only union VCF (INFO `CALLERS`, `SAMPLES`, `NCALLERS`, `NSAMPLES`, `INTARGET`). |
@@ -18,6 +19,16 @@ All files are prefixed with `--sample_id` (`<S>`). Count tables are gzipped CSV 
 ref_count, alt_count, other_count` (fragments passing filters, each fragment counted once),
 `depth = ref+alt+other`, `vaf = alt/(ref+alt)` (NaN if 0), `n_callers, callers, n_source_samples,
 source_samples, sources (T_vs_N:caller;…), called_in_target`.
+
+`<S>_snv_genotyping.vcf.gz`: one biallelic record per CSV row, same order (sorted, tabix-indexed),
+FILTER `PASS`, sample column `<S>`. Header = union VCF header (contigs with lengths) plus:
+- INFO `CALLERS`, `SAMPLES` (source tumors), `NCALLERS`, `NSAMPLES`, `SOURCES`
+  (`T_vs_N:caller`), flag `INTARGET` (= `called_in_target`);
+- FORMAT `AD` = `ref_count,alt_count`, `DP` = `depth`, `AF` = `vaf` (`.` when ref+alt = 0),
+  `OC` = `other_count`.
+
+There is no `GT`: the pipeline counts fragments and makes no genotype call; tools that require
+`GT` need one added downstream.
 
 ## SV (`sv_genotyping.nf`)
 

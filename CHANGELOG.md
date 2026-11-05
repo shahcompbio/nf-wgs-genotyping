@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.0 (2026-11-04)
+
+- SNV: `<S>_snv_genotyping.vcf.gz` (+ `.tbi`) next to the CSV — one record per CSV row, same order.
+  Header from the union VCF (contigs with lengths; INFO `CALLERS`, `SAMPLES`, `NCALLERS`,
+  `NSAMPLES`, `INTARGET`) plus INFO `SOURCES`; FORMAT `AD` (ref,alt fragments), `DP`
+  (ref+alt+other), `AF` (alt/(ref+alt), `.` when 0), `OC` (other). No `GT`: the pipeline counts
+  fragments and makes no genotype call. `snv_finalize.py` takes `--union-vcf` (required).
+- SV outputs unchanged. Image unchanged: `params.container` stays
+  `mattmyers/nf-wgs-genotyping:1.0.1` (`bin/` is staged by Nextflow; pysam is already in the image).
+
 ## v1.0.1 (2026-11-04)
 
 - `params.container = 'mattmyers/nf-wgs-genotyping:1.0.1'` (Docker Hub; Nextflow adds `docker://`

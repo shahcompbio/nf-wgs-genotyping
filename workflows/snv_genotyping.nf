@@ -15,7 +15,7 @@ workflow SNV_GENOTYPING {
     SNV_UNION(SNV_EXTRACT.out.tsv.collect(), sample_id, ch_ref)
     SNV_COUNT(SNV_UNION.out.chunks.flatten(), ch_bam)
     // explicit gather: snv_finalize.py checks the gathered chunk ids against the manifest
-    SNV_FINALIZE(SNV_UNION.out.union, SNV_COUNT.out.counts.collect(), SNV_UNION.out.manifest,
+    SNV_FINALIZE(SNV_UNION.out.union, SNV_UNION.out.vcf, SNV_COUNT.out.counts.collect(), SNV_UNION.out.manifest,
                  SNV_EXTRACT.out.stats.collect(), sample_id)
 
     ch_versions = SNV_EXTRACT.out.versions.mix(SNV_UNION.out.versions, SNV_COUNT.out.versions,
@@ -24,5 +24,6 @@ workflow SNV_GENOTYPING {
     emit:
     table    = SNV_FINALIZE.out.table
     qc       = SNV_FINALIZE.out.qc
+    vcf      = SNV_FINALIZE.out.vcf
     versions = ch_versions
 }

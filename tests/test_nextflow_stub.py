@@ -29,6 +29,7 @@ def test_snv_entry_stub_run_publishes_final_outputs(tmp_path):
     res, out = _run("snv_genotyping.nf", tmp_path)
     assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
     for name in ("STUB_snv_genotyping.csv.gz", "STUB_snv_genotyping.csv.gz.yaml", "STUB_genotyping_qc.json",
+                 "STUB_snv_genotyping.vcf.gz", "STUB_snv_genotyping.vcf.gz.tbi",
                  "union/STUB_union_snvs.tsv.gz", "union/STUB_union_snvs.vcf.gz",
                  "pipeline_info/software_versions.yml"):
         assert (out / name).exists(), name
